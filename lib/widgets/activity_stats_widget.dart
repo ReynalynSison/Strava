@@ -1,0 +1,94 @@
+import 'package:flutter/cupertino.dart';
+import '../models/activity_model.dart';
+import '../utils/formatters.dart';
+
+/// Reusable 3-column stats row — Distance | Duration | Pace.
+/// Used in ActivitySummaryScreen, ActivityCardWidget, and HomeScreen.
+class ActivityStatsWidget extends StatelessWidget {
+  final ActivityModel activity;
+
+  const ActivityStatsWidget({super.key, required this.activity});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: CupertinoTheme.brightnessOf(context) == Brightness.dark
+            ? const Color(0xFF1C1C1E)
+            : CupertinoColors.white,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _StatColumn(
+            icon: CupertinoIcons.map_pin_ellipse,
+            value: formatDistance(activity.distance),
+            label: 'Distance',
+          ),
+          _Divider(),
+          _StatColumn(
+            icon: CupertinoIcons.timer,
+            value: formatDuration(activity.durationSeconds),
+            label: 'Duration',
+          ),
+          _Divider(),
+          _StatColumn(
+            icon: CupertinoIcons.speedometer,
+            value: formatPace(activity.pace),
+            label: 'Pace',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Private helpers ───────────────────────────────────────────────────────────
+
+class _StatColumn extends StatelessWidget {
+  final IconData icon;
+  final String value;
+  final String label;
+
+  const _StatColumn({
+    required this.icon,
+    required this.value,
+    required this.label,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 18, color: CupertinoColors.systemOrange),
+        const SizedBox(height: 6),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 12,
+            color: CupertinoColors.secondaryLabel,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _Divider extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(width: 1, height: 44, color: CupertinoColors.separator);
+  }
+}
+

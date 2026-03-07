@@ -5,8 +5,12 @@
 import FlutterMacOS
 import Foundation
 
+import geolocator_apple
 import local_auth_darwin
+import share_plus
 
 func RegisterGeneratedPlugins(registry: FlutterPluginRegistry) {
+  GeolocatorPlugin.register(with: registry.registrar(forPlugin: "GeolocatorPlugin"))
   LocalAuthPlugin.register(with: registry.registrar(forPlugin: "LocalAuthPlugin"))
+  SharePlusMacosPlugin.register(with: registry.registrar(forPlugin: "SharePlusMacosPlugin"))
 }

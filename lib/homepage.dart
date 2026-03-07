@@ -1,5 +1,9 @@
 import 'package:flutter/cupertino.dart';
-import 'errands.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'screens/home_screen.dart';
+import 'screens/history_screen.dart';
+import 'screens/record_screen.dart';
+import 'screens/social_screen.dart';
 import 'settings.dart';
 
 class Homepage extends StatefulWidget {
@@ -10,19 +14,65 @@ class Homepage extends StatefulWidget {
 }
 
 class _HomepageState extends State<Homepage> {
+  // Shared controller — passed down so any screen can switch tabs
+  final CupertinoTabController _tabController = CupertinoTabController();
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return CupertinoTabScaffold(tabBar: CupertinoTabBar(items: [
-      BottomNavigationBarItem(
-          icon: Icon(CupertinoIcons.home), label: 'Errands'),
-      BottomNavigationBarItem(
-          icon: Icon(CupertinoIcons.settings), label: 'Settings'),
-    ]), tabBuilder: (context, index) {
-      if (index == 0) {
-        return Errands();
-      } else {
-        return Settings();
-      }
-    });
+    // Rebuild tab bar when darkMode changes so theme is applied immediately
+    return ValueListenableBuilder(
+      valueListenable: Hive.box("database").listenable(keys: ['darkMode']),
+      builder: (context, box, _) {
+        return CupertinoTabScaffold(
+          controller: _tabController,
+          tabBar: CupertinoTabBar(
+            items: const [
+              BottomNavigationBarItem(
+                icon: Icon(CupertinoIcons.home),
+                label: 'Home',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(CupertinoIcons.list_bullet),
+                label: 'History',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(CupertinoIcons.play_circle_fill),
+                label: 'Record',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(CupertinoIcons.share),
+                label: 'Social',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(CupertinoIcons.settings),
+                label: 'Settings',
+              ),
+            ],
+          ),
+          tabBuilder: (context, index) {
+            switch (index) {
+              case 0:
+                return HomeScreen(onGoToRecord: () => _tabController.index = 2);
+              case 1:
+                return HistoryScreen(onGoToRecord: () => _tabController.index = 2);
+              case 2:
+                return const RecordScreen();
+              case 3:
+                return const SocialScreen();
+              case 4:
+                return const Settings();
+              default:
+                return HomeScreen(onGoToRecord: () => _tabController.index = 2);
+            }
+          },
+        );
+      },
+    );
   }
 }

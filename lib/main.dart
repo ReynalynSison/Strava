@@ -1,10 +1,7 @@
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
-import 'package:hive/hive.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:local_auth/local_auth.dart';
 
-// Ensure these filenames match your actual files!
 import 'homepage.dart';
 import 'signup.dart';
 
@@ -12,6 +9,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Hive.initFlutter();
   await Hive.openBox("database");
+  await Hive.openBox("activities");
   runApp(const MyApp());
 }
 
@@ -26,12 +24,24 @@ class _State extends State<MyApp> {
   @override
   Widget build(BuildContext context) {
     final box = Hive.box("database");
-    return CupertinoApp(
-        theme: const CupertinoThemeData(
-            primaryColor: CupertinoColors.label,
-            brightness: Brightness.dark),
-        debugShowCheckedModeBanner: false,
-        home: (box.get("username") != null) ? const LoginPage() : const SignupPage());
+
+    // ValueListenableBuilder rebuilds the entire app when any Hive key changes,
+    // which includes the "darkMode" toggle set from Settings.
+    return ValueListenableBuilder(
+      valueListenable: box.listenable(),
+      builder: (context, Box db, _) {
+        final isDark = db.get("darkMode", defaultValue: false) as bool;
+        return CupertinoApp(
+          theme: CupertinoThemeData(
+            brightness: isDark ? Brightness.dark : Brightness.light,
+          ),
+          debugShowCheckedModeBanner: false,
+          home: db.get("username") != null
+              ? const LoginPage()
+              : const SignupPage(),
+        );
+      },
+    );
   }
 }
 
@@ -64,6 +74,7 @@ class _LoginPageState extends State<LoginPage> {
               CupertinoTextField(
                 controller: _username,
                 placeholder: "Username",
+                autofillHints: const [],
                 prefix: const Padding(
                   padding: EdgeInsets.only(left: 8.0),
                   child: Icon(CupertinoIcons.person),
@@ -74,6 +85,7 @@ class _LoginPageState extends State<LoginPage> {
               CupertinoTextField(
                 controller: _password,
                 placeholder: "Password",
+                autofillHints: const [],
                 prefix: const Padding(
                   padding: EdgeInsets.only(left: 8.0),
                   child: Icon(CupertinoIcons.padlock),
@@ -101,7 +113,7 @@ class _LoginPageState extends State<LoginPage> {
 
                     if (box.get("biometrics", defaultValue: false))
                       CupertinoButton(
-                        child: const Icon(Icons.fingerprint_rounded, size: 50),
+                        child: const Icon(CupertinoIcons.lock_shield_fill, size: 50),
                         onPressed: () async {
                           try {
                             // In v3.0.0, use 'biometricOnly' and 'persistAcrossBackgrounding' directly
@@ -129,12 +141,34 @@ class _LoginPageState extends State<LoginPage> {
                               context: context,
                               builder: (context) => CupertinoAlertDialog(
                                 title: const Text("Delete all local data?"),
+                                content: const Text("Authenticate with Face ID / biometrics to continue."),
                                 actions: [
                                   CupertinoButton(
                                       child: const Text('Yes'),
-                                      onPressed: () {
-                                        box.clear();
-                                        Navigator.pushReplacement(context, CupertinoPageRoute(builder: (context) => const SignupPage()));
+                                      onPressed: () async {
+                                        try {
+                                          final bool didAuthenticate = await auth.authenticate(
+                                            localizedReason: 'Authenticate to reset app data',
+                                            // ignore: deprecated_member_use
+                                            biometricOnly: true,
+                                            persistAcrossBackgrounding: true,
+                                          );
+
+                                          if (!mounted) return;
+
+                                          if (didAuthenticate) {
+                                            await box.clear();
+                                            if (!mounted) return;
+                                            Navigator.pushReplacement(context, CupertinoPageRoute(builder: (context) => const SignupPage()));
+                                          } else {
+                                            Navigator.pop(context);
+                                            setState(() => msg = 'Authentication required to reset data');
+                                          }
+                                        } catch (e) {
+                                          if (!mounted) return;
+                                          Navigator.pop(context);
+                                          setState(() => msg = 'Auth Error: $e');
+                                        }
                                       }),
                                   CupertinoButton(
                                       child: const Text('No'),

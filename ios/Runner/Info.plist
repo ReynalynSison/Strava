@@ -4,6 +4,12 @@
 <dict>
     <key>NSFaceIDUsageDescription</key>
     <string>Why is my app authenticating using face id?</string>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>This app needs location access to track your runs and display your route on the map.</string>
+    <key>NSLocationAlwaysUsageDescription</key>
+    <string>This app needs location access to track your runs in the background.</string>
+    <key>NSCameraUsageDescription</key>
+    <string>Used to take photos with your activity sticker overlay.</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
