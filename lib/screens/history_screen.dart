@@ -14,7 +14,7 @@ class HistoryScreen extends StatefulWidget {
   State<HistoryScreen> createState() => _HistoryScreenState();
 }
 
-class _HistoryScreenState extends State<HistoryScreen> {
+class _HistoryScreenState extends State<HistoryScreen> with RouteAware {
   final StorageService _storage = StorageService();
   final DemoService _demo = DemoService();
   List<ActivityModel> _activities = [];
@@ -29,9 +29,16 @@ class _HistoryScreenState extends State<HistoryScreen> {
     _loadActivities();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _loadActivities(silent: true);
+  }
+
   // ─── Data ─────────────────────────────────────────────────────────────────
 
-  Future<void> _loadActivities() async {
+  Future<void> _loadActivities({bool silent = false}) async {
+    if (!silent && mounted) setState(() => _isLoading = true);
     final activities = await _storage.loadAllActivities();
     if (!mounted) return;
     setState(() {
@@ -45,7 +52,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   Future<void> _seedDemo() async {
     setState(() => _isSeeding = true);
     await _demo.seedDemoRun();
-    await _loadActivities();
+    await _loadActivities(silent: true);
     if (!mounted) return;
     setState(() => _isSeeding = false);
   }
@@ -53,7 +60,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   Future<void> _seedStationary() async {
     setState(() => _isSeeding = true);
     await _demo.seedStationaryDemo();
-    await _loadActivities();
+    await _loadActivities(silent: true);
     if (!mounted) return;
     setState(() => _isSeeding = false);
   }

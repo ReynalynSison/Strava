@@ -1,6 +1,5 @@
 import 'package:flutter/cupertino.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:local_auth/local_auth.dart';
 import 'main.dart';
 import 'models/activity_model.dart';
 import 'services/storage_service.dart';
@@ -14,8 +13,6 @@ class Settings extends StatefulWidget {
 
 class _SettingsState extends State<Settings> {
   final box = Hive.box("database");
-  final LocalAuthentication _auth = LocalAuthentication();
-  bool _isDeletingAll = false;
 
   // ─── Tile builder ─────────────────────────────────────────────────────────
 
@@ -110,63 +107,6 @@ class _SettingsState extends State<Settings> {
     );
   }
 
-  // ─── Delete All Activities ────────────────────────────────────────────────
-
-  Future<void> _deleteAllActivities(BuildContext ctx) async {
-    // First ask for biometric confirmation if enabled
-    final biometricsEnabled =
-        box.get("biometrics", defaultValue: false) as bool;
-
-    if (biometricsEnabled) {
-      try {
-        final canCheck = await _auth.canCheckBiometrics;
-        if (canCheck) {
-          final authenticated = await _auth.authenticate(
-            localizedReason: 'Confirm deleting all activities',
-            // ignore: deprecated_member_use
-            biometricOnly: false,
-            persistAcrossBackgrounding: true,
-          );
-          if (!authenticated) return;
-        }
-      } catch (_) {
-        // If biometrics unavailable, skip and proceed to dialog
-      }
-    }
-
-    if (!mounted) return;
-
-    // Confirm dialog
-    showCupertinoDialog(
-      context: ctx,
-      builder: (_) => CupertinoAlertDialog(
-        title: const Text('Delete All Activities?'),
-        content: const Text(
-            'This will permanently delete every recorded run. This cannot be undone.'),
-        actions: [
-          CupertinoDialogAction(
-            isDestructiveAction: true,
-            child: const Text('Delete All'),
-            onPressed: () async {
-              Navigator.pop(ctx);
-              setState(() => _isDeletingAll = true);
-              await StorageService().clearAllActivities();
-              if (!mounted) return;
-              setState(() => _isDeletingAll = false);
-              // Pop back to root so Home refreshes
-              Navigator.of(ctx).popUntil((r) => r.isFirst);
-            },
-          ),
-          CupertinoDialogAction(
-            isDefaultAction: true,
-            child: const Text('Cancel'),
-            onPressed: () => Navigator.pop(ctx),
-          ),
-        ],
-      ),
-    );
-  }
-
   // ─── Build ────────────────────────────────────────────────────────────────
 
   @override
@@ -231,26 +171,6 @@ class _SettingsState extends State<Settings> {
                 ],
               ),
 
-              // ── DATA ──────────────────────────────────────────────
-              CupertinoListSection.insetGrouped(
-                header: const Text('DATA'),
-                children: [
-                  _tile(
-                    trailing: _isDeletingAll
-                        ? const CupertinoActivityIndicator()
-                        : const Icon(
-                            CupertinoIcons.trash,
-                            color: CupertinoColors.systemRed,
-                          ),
-                    title: 'Delete All Activities',
-                    color: CupertinoColors.systemRed,
-                    icon: CupertinoIcons.delete_solid,
-                    onTap: _isDeletingAll
-                        ? null
-                        : () => _deleteAllActivities(context),
-                  ),
-                ],
-              ),
 
               // ── DEV / TESTING ─────────────────────────────────────────
               CupertinoListSection.insetGrouped(
