@@ -3,6 +3,7 @@ import '../models/activity_model.dart';
 import '../services/share_service.dart';
 import '../utils/formatters.dart';
 import '../widgets/activity_stats_widget.dart';
+import '../widgets/animated_route_widget.dart';
 import '../widgets/route_map_widget.dart';
 import '../widgets/shareable_card_widget.dart';
 
@@ -79,13 +80,39 @@ class _ActivitySummaryScreenState extends State<ActivitySummaryScreen> {
 
               const SizedBox(height: 16),
 
-              // ── Route Map (animated draw-in, tap Replay to replay) ──
-              RouteMapWidget(
-                coordinates: widget.activity.routeCoordinates,
-                interactive: true,
+              // ── Route Map + animated draw-in ────────────────────────
+              // Stack: static map tiles at bottom, animated route on top.
+              // AnimatedRouteWidget uses pure-Canvas math so it works
+              // immediately without waiting for the map camera to initialize.
+              SizedBox(
                 height: 280,
-                animate: true,
-                animationDuration: const Duration(seconds: 3),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: Stack(
+                    children: [
+                      // Static map — tiles only, no animation
+                      RouteMapWidget(
+                        coordinates: widget.activity.routeCoordinates,
+                        interactive: false,
+                        height: 280,
+                        showEndMarkers: false,
+                        animate: false,
+                      ),
+                      // Animated route drawn via CustomPaint (no MapController needed)
+                      Positioned.fill(
+                        child: AnimatedRouteWidget(
+                          coordinates: widget.activity.routeCoordinates,
+                          distance: widget.activity.distance,
+                          durationSeconds: widget.activity.durationSeconds,
+                          pace: widget.activity.pace,
+                          animationDuration: const Duration(seconds: 3),
+                          transparentBackground: true,
+                          showStatsOverlay: false,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
 
               const SizedBox(height: 24),
