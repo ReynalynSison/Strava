@@ -4,6 +4,10 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <!-- Camera permission for sticker photo capture -->
     <uses-permission android:name="android.permission.CAMERA"/>
+    <!-- Photo library access for profile picture (Android 13+) -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+    <!-- Photo library access for profile picture (Android <13) -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>
 
     <application
         android:label="faceid"

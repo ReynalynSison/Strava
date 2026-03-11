@@ -1,9 +1,12 @@
+import 'dart:io';
 import 'package:flutter/cupertino.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../models/activity_model.dart';
 import '../services/storage_service.dart';
 import '../utils/formatters.dart';
-import '../widgets/activity_card_widget.dart';
+import '../widgets/profile_avatar_widget.dart';
+import '../widgets/route_map_widget.dart';
+import '../widgets/route_outline_painter.dart';
 import 'activity_summary_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -17,41 +20,23 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final StorageService _storage = StorageService();
-
-  List<ActivityModel> _activities = [];
+  List<ActivityModel> _feedActivities = [];
   bool _isLoading = true;
-
-  // ─── Lifecycle ────────────────────────────────────────────────────────────
 
   @override
   void initState() {
     super.initState();
-    _loadActivities();
+    _loadFeed();
   }
 
-  // ─── Data ─────────────────────────────────────────────────────────────────
-
-  Future<void> _loadActivities() async {
-    final activities = await _storage.loadAllActivities();
+  Future<void> _loadFeed() async {
+    final all = await _storage.loadAllActivities();
     if (!mounted) return;
     setState(() {
-      _activities = activities; // already sorted newest first
+      _feedActivities = all.where((a) => a.postedToFeed).toList();
       _isLoading = false;
     });
   }
-
-  // ─── Computed Stats ───────────────────────────────────────────────────────
-
-  double get _totalDistanceKm =>
-      _activities.fold(0.0, (sum, a) => sum + a.distance) / 1000;
-
-  int get _totalDurationSeconds =>
-      _activities.fold(0, (sum, a) => sum + a.durationSeconds);
-
-  ActivityModel? get _latestActivity =>
-      _activities.isNotEmpty ? _activities.first : null;
-
-  // ─── Build ────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -61,108 +46,36 @@ class _HomeScreenState extends State<HomeScreen> {
     return CupertinoPageScaffold(
       child: CustomScrollView(
         slivers: [
-          // ── Large Nav Bar ──────────────────────────────────────────
           CupertinoSliverNavigationBar(
-            largeTitle: Text('Hi, $username 👋'),
+            largeTitle: const Text('Feed'),
             alwaysShowMiddle: false,
           ),
-
-          // Pull-to-refresh
-          CupertinoSliverRefreshControl(
-            onRefresh: _loadActivities,
-          ),
+          CupertinoSliverRefreshControl(onRefresh: _loadFeed),
 
           if (_isLoading)
             const SliverFillRemaining(
               child: Center(child: CupertinoActivityIndicator(radius: 16)),
             )
-          else if (_activities.isEmpty)
+          else if (_feedActivities.isEmpty)
             SliverFillRemaining(child: _buildEmptyState())
           else ...[
-            // ── Aggregate Stats Card ─────────────────────────────
-            SliverToBoxAdapter(child: _buildStatsCard()),
-
-            // ── Latest Run Header ────────────────────────────────
-            const SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(16, 24, 16, 4),
-                child: Text(
-                  'LATEST RUN',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: CupertinoColors.secondaryLabel,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-              ),
-            ),
-
-            // ── Latest Activity Card ─────────────────────────────
-            if (_latestActivity != null)
-              SliverToBoxAdapter(
-                child: ActivityCardWidget(
-                  activity: _latestActivity!,
-                  onTap: () => Navigator.push(
-                    context,
-                    CupertinoPageRoute(
-                      builder: (_) => ActivitySummaryScreen(
-                          activity: _latestActivity!),
-                    ),
-                  ),
-                  onDelete: () {}, // delete from History, not here
-                ),
-              ),
-
-            // ── All Runs Header ──────────────────────────────────
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 24, 16, 4),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'ALL RUNS',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: CupertinoColors.secondaryLabel,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                    Text(
-                      '${_activities.length} total',
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: CupertinoColors.secondaryLabel,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            // ── All Activity Cards ───────────────────────────────
             SliverList(
               delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  final activity = _activities[index];
-                  return ActivityCardWidget(
-                    activity: activity,
-                    onTap: () => Navigator.push(
-                      context,
-                      CupertinoPageRoute(
-                        builder: (_) =>
-                            ActivitySummaryScreen(activity: activity),
+                (context, index) =>
+                    _FeedPostCard(
+                      activity: _feedActivities[index],
+                      username: username,
+                      onTap: () => Navigator.push(
+                        context,
+                        CupertinoPageRoute(
+                          builder: (_) => ActivitySummaryScreen(
+                              activity: _feedActivities[index]),
+                        ),
                       ),
                     ),
-                    onDelete: () {}, // delete managed from History tab
-                  );
-                },
-                childCount: _activities.length,
+                childCount: _feedActivities.length,
               ),
             ),
-
             const SliverToBoxAdapter(child: SizedBox(height: 32)),
           ],
         ],
@@ -170,77 +83,33 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ─── Aggregate Stats Card ─────────────────────────────────────────────────
-
-  Widget _buildStatsCard() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-      child: Container(
-        decoration: BoxDecoration(
-          color: CupertinoColors.systemOrange,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _AggregateStat(
-              label: 'Total Runs',
-              value: '${_activities.length}',
-              icon: CupertinoIcons.flag_fill,
-            ),
-            _VerticalDivider(),
-            _AggregateStat(
-              label: 'Total Distance',
-              value: formatDistance(_totalDistanceKm * 1000),
-              icon: CupertinoIcons.map_pin_ellipse,
-            ),
-            _VerticalDivider(),
-            _AggregateStat(
-              label: 'Total Time',
-              value: formatDuration(_totalDurationSeconds),
-              icon: CupertinoIcons.timer,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ─── Empty State ──────────────────────────────────────────────────────────
-
   Widget _buildEmptyState() {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(32),
+        padding: const EdgeInsets.all(36),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const Icon(
-              CupertinoIcons.flame,
+              CupertinoIcons.person_2_fill,
               size: 72,
-              color: CupertinoColors.systemOrange,
+              color: CupertinoColors.systemGrey3,
             ),
             const SizedBox(height: 20),
             const Text(
-              'Ready to run?',
-              style: TextStyle(
-                fontSize: 26,
-                fontWeight: FontWeight.w700,
-              ),
+              'Your feed is empty',
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 10),
             const Text(
-              'Record your first run and your stats will appear here.',
+              'When you finish a run, choose to post it here and add a caption.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                fontSize: 15,
-                color: CupertinoColors.secondaryLabel,
-              ),
+                  fontSize: 15, color: CupertinoColors.secondaryLabel),
             ),
             const SizedBox(height: 28),
             CupertinoButton(
-              color: CupertinoColors.systemOrange,
+              color: const Color(0xFFFC4C02),
               borderRadius: BorderRadius.circular(14),
               padding:
                   const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
@@ -252,7 +121,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       color: CupertinoColors.white, size: 16),
                   SizedBox(width: 8),
                   Text(
-                    'Start First Run',
+                    'Record a Run',
                     style: TextStyle(
                       color: CupertinoColors.white,
                       fontWeight: FontWeight.w600,
@@ -269,54 +138,273 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// ── Private helpers ───────────────────────────────────────────────────────────
+// ── Feed Post Card ─────────────────────────────────────────────────────────────
 
-class _AggregateStat extends StatelessWidget {
-  final String label;
-  final String value;
-  final IconData icon;
+class _FeedPostCard extends StatelessWidget {
+  final ActivityModel activity;
+  final String username;
+  final VoidCallback onTap;
 
-  const _AggregateStat({
-    required this.label,
-    required this.value,
-    required this.icon,
+  const _FeedPostCard({
+    required this.activity,
+    required this.username,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
+    final isDark =
+        CupertinoTheme.brightnessOf(context) == Brightness.dark;
+    final cardColor =
+        isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+        child: Container(
+          decoration: BoxDecoration(
+            color: cardColor,
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: [
+              BoxShadow(
+                color: isDark
+                    ? CupertinoColors.black.withValues(alpha: 0.25)
+                    : CupertinoColors.systemGrey5,
+                blurRadius: 10,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Header: avatar + name + date ──────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
+                child: Row(
+                  children: [
+                    // Avatar
+                    const ProfileAvatarWidget(size: 42, editable: false),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            username,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          Text(
+                            formatDate(activity.date),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: CupertinoColors.secondaryLabel,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Activity type badge
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFC4C02).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Text(
+                        '🏃 Run',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFFFC4C02),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // ── Caption ───────────────────────────────────────────
+              if (activity.caption != null &&
+                  activity.caption!.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+                  child: Text(
+                    activity.caption!,
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                ),
+
+              // ── Photo or Route Map ────────────────────────────────
+              _buildMediaSection(activity),
+
+              // ── Stats Row ─────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _StatChip(
+                      icon: CupertinoIcons.location_solid,
+                      label: 'Distance',
+                      value: formatDistance(activity.distance),
+                      color: const Color(0xFFFC4C02),
+                    ),
+                    _StatChip(
+                      icon: CupertinoIcons.timer,
+                      label: 'Time',
+                      value: formatDuration(activity.durationSeconds),
+                      color: CupertinoColors.activeBlue,
+                    ),
+                    _StatChip(
+                      icon: CupertinoIcons.speedometer,
+                      label: 'Pace',
+                      value: formatPace(activity.pace),
+                      color: CupertinoColors.systemPurple,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Media section: photo with overlay or route map fallback ───────────────
+  Widget _buildMediaSection(ActivityModel activity) {
+    final path = activity.photoPath;
+    if (path != null && File(path).existsSync()) {
+      return SizedBox(
+        height: 260,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.file(File(path), fit: BoxFit.cover),
+            Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.center,
+                  colors: [Color(0x99000000), Color(0x00000000)],
+                ),
+              ),
+            ),
+            Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.bottomCenter,
+                  end: Alignment.center,
+                  colors: [Color(0xCC000000), Color(0x00000000)],
+                ),
+              ),
+            ),
+              Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _OverlayStat('Distance', formatDistance(activity.distance)),
+                  const SizedBox(height: 10),
+                  _OverlayStat('Pace', formatPace(activity.pace)),
+                  const SizedBox(height: 10),
+                  _OverlayStat('Time', formatDuration(activity.durationSeconds)),
+                  const SizedBox(height: 14),
+                  // ── Orange GPS route outline ──────────────────
+                  if (activity.routeCoordinates.length >= 2)
+                    RouteOutlineWidget(
+                      coordinates: activity.routeCoordinates,
+                      size: 110,
+                    ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'STRAVA',
+                    style: TextStyle(
+                      color: Color(0xFFFC4C02),
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 4,
+                      shadows: [Shadow(blurRadius: 4, color: CupertinoColors.black)],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    return RouteMapWidget(
+      coordinates: activity.routeCoordinates,
+      interactive: false,
+      height: 180,
+    );
+  }
+}
+
+// ── _OverlayStat ──────────────────────────────────────────────────────────────
+
+class _OverlayStat extends StatelessWidget {
+  final String label;
+  final String value;
+  const _OverlayStat(this.label, this.value);
+
+  @override
+  Widget build(BuildContext context) {
     return Column(
-      mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, color: CupertinoColors.white, size: 20),
-        const SizedBox(height: 6),
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w700,
-            color: CupertinoColors.white,
-          ),
-        ),
-        const SizedBox(height: 3),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 11,
-            color: CupertinoColors.white.withValues(alpha: 0.85),
-          ),
-        ),
+        Text(label,
+            style: const TextStyle(
+              color: CupertinoColors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.w400,
+              shadows: [Shadow(blurRadius: 4, color: CupertinoColors.black)],
+            )),
+        Text(value,
+            style: const TextStyle(
+              color: CupertinoColors.white,
+              fontSize: 32,
+              fontWeight: FontWeight.w800,
+              shadows: [Shadow(blurRadius: 6, color: CupertinoColors.black)],
+            )),
       ],
     );
   }
 }
 
-class _VerticalDivider extends StatelessWidget {
+// ── _StatChip ─────────────────────────────────────────────────────────────────
+
+class _StatChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
+
+  const _StatChip({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 1,
-      height: 44,
-      color: CupertinoColors.white.withValues(alpha: 0.3),
+    return Column(
+      children: [
+        Icon(icon, color: color, size: 18),
+        const SizedBox(height: 4),
+        Text(value,
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+        Text(label,
+            style: const TextStyle(
+                fontSize: 11, color: CupertinoColors.secondaryLabel)),
+      ],
     );
   }
 }

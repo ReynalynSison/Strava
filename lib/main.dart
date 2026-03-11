@@ -137,41 +137,71 @@ class _LoginPageState extends State<LoginPage> {
                     CupertinoButton(
                         child: const Text('Reset Data', style: TextStyle(color: CupertinoColors.destructiveRed)),
                         onPressed: () {
+                          final biometricsEnabled =
+                              box.get("biometrics", defaultValue: false) as bool;
+
                           showCupertinoDialog(
                               context: context,
                               builder: (context) => CupertinoAlertDialog(
-                                title: const Text("Delete all local data?"),
-                                content: const Text("Authenticate with Face ID / biometrics to continue."),
+                                title: const Text("Reset all data?"),
+                                content: Text(
+                                  biometricsEnabled
+                                      ? "You will be asked to authenticate with Face ID / biometrics to confirm."
+                                      : "This will permanently delete all your local data. This cannot be undone.",
+                                ),
                                 actions: [
-                                  CupertinoButton(
-                                      child: const Text('Yes'),
+                                  CupertinoDialogAction(
+                                      isDestructiveAction: true,
+                                      child: const Text('Reset'),
                                       onPressed: () async {
-                                        try {
-                                          final bool didAuthenticate = await auth.authenticate(
-                                            localizedReason: 'Authenticate to reset app data',
-                                            // ignore: deprecated_member_use
-                                            biometricOnly: true,
-                                            persistAcrossBackgrounding: true,
-                                          );
+                                        Navigator.pop(context); // close dialog first
 
-                                          if (!mounted) return;
+                                        if (biometricsEnabled) {
+                                          // ── Biometrics ON: require Face ID ──
+                                          try {
+                                            final bool didAuthenticate =
+                                                await auth.authenticate(
+                                              localizedReason:
+                                                  'Authenticate to reset app data',
+                                              // ignore: deprecated_member_use
+                                              biometricOnly: true,
+                                              persistAcrossBackgrounding: true,
+                                            );
 
-                                          if (didAuthenticate) {
-                                            await box.clear();
                                             if (!mounted) return;
-                                            Navigator.pushReplacement(context, CupertinoPageRoute(builder: (context) => const SignupPage()));
-                                          } else {
-                                            Navigator.pop(context);
-                                            setState(() => msg = 'Authentication required to reset data');
+
+                                            if (didAuthenticate) {
+                                              await box.clear();
+                                              await Hive.box("activities").clear();
+                                              if (!mounted) return;
+                                              Navigator.pushReplacement(
+                                                  context,
+                                                  CupertinoPageRoute(
+                                                      builder: (_) =>
+                                                          const SignupPage()));
+                                            } else {
+                                              setState(() =>
+                                                  msg = 'Authentication required to reset data');
+                                            }
+                                          } catch (e) {
+                                            if (!mounted) return;
+                                            setState(() => msg = 'Auth Error: $e');
                                           }
-                                        } catch (e) {
+                                        } else {
+                                          // ── Biometrics OFF: reset immediately ──
+                                          await box.clear();
+                                          await Hive.box("activities").clear();
                                           if (!mounted) return;
-                                          Navigator.pop(context);
-                                          setState(() => msg = 'Auth Error: $e');
+                                          Navigator.pushReplacement(
+                                              context,
+                                              CupertinoPageRoute(
+                                                  builder: (_) =>
+                                                      const SignupPage()));
                                         }
                                       }),
-                                  CupertinoButton(
-                                      child: const Text('No'),
+                                  CupertinoDialogAction(
+                                      isDefaultAction: true,
+                                      child: const Text('Cancel'),
                                       onPressed: () => Navigator.pop(context)),
                                 ],
                               ));

@@ -28,19 +28,19 @@ class LocationService {
   /// Gets the user's current GPS position.
   Future<Position> getCurrentLocation() async {
     return await Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.high,
+      desiredAccuracy: LocationAccuracy.bestForNavigation,
     );
   }
 
   /// Returns a stream of position updates for real-time tracking.
-  /// Position updates every ~10 meters of movement.
+  /// Position updates every ~3 meters of movement for a smooth, accurate route line.
   Stream<Position> getPositionStream() {
     return Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 10, // Update every 10 meters
+        accuracy: LocationAccuracy.bestForNavigation,
+        distanceFilter: 3, // Update every 3 meters for a detailed route
       ),
-    );
+    ).where((pos) => pos.accuracy <= 20.0); // Reject readings worse than 20 m accuracy
   }
 
   /// Calculates the total distance in meters from a list of GPS coordinates.

@@ -3,7 +3,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'screens/home_screen.dart';
 import 'screens/history_screen.dart';
 import 'screens/record_screen.dart';
-import 'screens/social_screen.dart';
+import 'screens/you_screen.dart';
 import 'settings.dart';
 
 class Homepage extends StatefulWidget {
@@ -35,7 +35,7 @@ class _HomepageState extends State<Homepage> {
             items: const [
               BottomNavigationBarItem(
                 icon: Icon(CupertinoIcons.home),
-                label: 'Home',
+                label: 'Feed',
               ),
               BottomNavigationBarItem(
                 icon: Icon(CupertinoIcons.list_bullet),
@@ -46,8 +46,8 @@ class _HomepageState extends State<Homepage> {
                 label: 'Record',
               ),
               BottomNavigationBarItem(
-                icon: Icon(CupertinoIcons.share),
-                label: 'Social',
+                icon: Icon(CupertinoIcons.person_crop_circle_fill),
+                label: 'You',
               ),
               BottomNavigationBarItem(
                 icon: Icon(CupertinoIcons.settings),
@@ -64,7 +64,7 @@ class _HomepageState extends State<Homepage> {
               case 2:
                 return const RecordScreen();
               case 3:
-                return const SocialScreen();
+                return const YouScreen();
               case 4:
                 return const Settings();
               default:

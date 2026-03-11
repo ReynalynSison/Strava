@@ -21,6 +21,15 @@ class ActivityModel {
   /// Each point is stored as {"lat": double, "lng": double}.
   final List<Map<String, double>> routeCoordinates;
 
+  /// Optional caption added when posting to the feed.
+  final String? caption;
+
+  /// Whether this activity has been posted to the feed.
+  final bool postedToFeed;
+
+  /// Optional path to the post-run photo taken by the user.
+  final String? photoPath;
+
   ActivityModel({
     String? id,
     required this.distance,
@@ -28,6 +37,9 @@ class ActivityModel {
     required this.pace,
     required this.date,
     required this.routeCoordinates,
+    this.caption,
+    this.postedToFeed = false,
+    this.photoPath,
   }) : id = id ?? const Uuid().v4();
 
   // ─── Serialization ────────────────────────────────────────────────────────
@@ -40,6 +52,9 @@ class ActivityModel {
       'pace': pace,
       'date': date.toIso8601String(),
       'routeCoordinates': routeCoordinates,
+      'caption': caption,
+      'postedToFeed': postedToFeed,
+      'photoPath': photoPath,
     };
   }
 
@@ -61,6 +76,9 @@ class ActivityModel {
       pace: (json['pace'] as num).toDouble(),
       date: DateTime.parse(json['date'] as String),
       routeCoordinates: coords,
+      caption: json['caption'] as String?,
+      postedToFeed: (json['postedToFeed'] as bool?) ?? false,
+      photoPath: json['photoPath'] as String?,
     );
   }
 
@@ -73,6 +91,9 @@ class ActivityModel {
     double? pace,
     DateTime? date,
     List<Map<String, double>>? routeCoordinates,
+    String? caption,
+    bool? postedToFeed,
+    String? photoPath,
   }) {
     return ActivityModel(
       id: id ?? this.id,
@@ -81,6 +102,9 @@ class ActivityModel {
       pace: pace ?? this.pace,
       date: date ?? this.date,
       routeCoordinates: routeCoordinates ?? this.routeCoordinates,
+      caption: caption ?? this.caption,
+      postedToFeed: postedToFeed ?? this.postedToFeed,
+      photoPath: photoPath ?? this.photoPath,
     );
   }
 

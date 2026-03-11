@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
@@ -8,6 +9,7 @@ import '../services/tracking_service.dart';
 import '../services/storage_service.dart';
 import '../models/activity_model.dart';
 import 'activity_summary_screen.dart';
+import 'run_photo_screen.dart';
 
 class RecordScreen extends StatefulWidget {
   const RecordScreen({super.key});
@@ -158,9 +160,143 @@ class _RecordScreenState extends State<RecordScreen> {
     _uiTimer = null;
 
     // Get the completed activity from TrackingService
-    final ActivityModel activity = _trackingService.stopTracking();
+    ActivityModel activity = _trackingService.stopTracking();
     if (!mounted) return;
     setState(() {});
+
+    // ── Step 1: Take a post-run photo ──────────────────────────────────────
+    final File? photo = await Navigator.push<File?>(
+      context,
+      CupertinoPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => RunPhotoScreen(activity: activity),
+      ),
+    );
+
+    if (!mounted) return;
+
+    // Attach the photo path if the user took/chose one
+    if (photo != null) {
+      activity = activity.copyWith(photoPath: photo.path);
+    }
+
+    // ── Step 2: Ask user: post to feed? ────────────────────────────────────
+    final TextEditingController captionController = TextEditingController();
+    bool postToFeed = false;
+
+    await showCupertinoModalPopup<void>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            return Container(
+              decoration: BoxDecoration(
+                color: CupertinoTheme.of(ctx).scaffoldBackgroundColor,
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(20)),
+              ),
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 20,
+                bottom: MediaQuery.of(ctx).viewInsets.bottom + 28,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // ── Handle ────────────────────────────────────────
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: CupertinoColors.systemGrey4,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  const Text(
+                    'Run Saved! 🎉',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Would you like to post this run to your Feed?',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: CupertinoColors.secondaryLabel,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  // ── Toggle ────────────────────────────────────────
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Post to Feed',
+                        style: TextStyle(fontSize: 16),
+                      ),
+                      CupertinoSwitch(
+                        value: postToFeed,
+                        activeTrackColor: const Color(0xFFFC4C02),
+                        onChanged: (v) => setSheetState(() => postToFeed = v),
+                      ),
+                    ],
+                  ),
+                  // ── Caption field (only when toggled on) ──────────
+                  if (postToFeed) ...[
+                    const SizedBox(height: 14),
+                    CupertinoTextField(
+                      controller: captionController,
+                      placeholder: 'Add a caption… (optional)',
+                      maxLines: 3,
+                      minLines: 2,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: CupertinoColors.systemGrey6,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 22),
+                  // ── Confirm Button ────────────────────────────────
+                  CupertinoButton(
+                    color: const Color(0xFFFC4C02),
+                    borderRadius: BorderRadius.circular(12),
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    child: Text(
+                      postToFeed ? 'Post & Continue' : 'Continue',
+                      style: const TextStyle(
+                        color: CupertinoColors.white,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    // Apply feed flag + caption to activity before saving
+    activity = activity.copyWith(
+      postedToFeed: postToFeed,
+      caption: postToFeed && captionController.text.trim().isNotEmpty
+          ? captionController.text.trim()
+          : null,
+    );
+
+    if (!mounted) return;
 
     // Show saving indicator
     showCupertinoDialog(
@@ -182,17 +318,15 @@ class _RecordScreenState extends State<RecordScreen> {
     await StorageService().saveActivity(activity);
 
     if (!mounted) return;
-    // Dismiss the saving dialog
-    Navigator.pop(context);
+    Navigator.pop(context); // dismiss saving dialog
 
-    // Navigate to Activity Summary — use push so Done can pop back to Record tab
+    // Navigate to Activity Summary
     Navigator.push(
       context,
       CupertinoPageRoute(
         builder: (_) => ActivitySummaryScreen(activity: activity),
       ),
     ).then((_) {
-      // Clear old route when user returns from summary so map is fresh
       if (mounted) {
         _trackingService.routeCoordinates.clear();
         setState(() {});

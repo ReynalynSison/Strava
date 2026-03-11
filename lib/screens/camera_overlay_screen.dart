@@ -8,7 +8,6 @@ import 'package:path_provider/path_provider.dart';
 import '../models/activity_model.dart';
 import '../services/camera_overlay_service.dart';
 import '../utils/formatters.dart';
-import '../widgets/sticker_overlay_widget.dart';
 
 /// Full-screen camera view with the activity sticker overlaid.
 /// Tap the capture button to take a photo with the sticker baked in.
@@ -320,7 +319,6 @@ class _CameraOverlayScreenState extends State<CameraOverlayScreen>
   // ─── Photo Preview ────────────────────────────────────────────────────────
 
   Widget _buildPreview() {
-    final size = MediaQuery.of(context).size;
 
     return CupertinoPageScaffold(
       backgroundColor: CupertinoColors.black,
