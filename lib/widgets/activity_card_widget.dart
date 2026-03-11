@@ -54,11 +54,13 @@ class ActivityCardWidget extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ── Mini Map ──────────────────────────────────────
+                // ── Mini Map (animated draw-in) ───────────────────
                 RouteMapWidget(
                   coordinates: activity.routeCoordinates,
                   interactive: false,
                   height: 110,
+                  animate: true,
+                  animationDuration: const Duration(seconds: 2),
                 ),
 
                 // ── Info Row ──────────────────────────────────────

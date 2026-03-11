@@ -79,11 +79,13 @@ class _ActivitySummaryScreenState extends State<ActivitySummaryScreen> {
 
               const SizedBox(height: 16),
 
-              // ── Route Map ───────────────────────────────────────────
+              // ── Route Map (animated draw-in, tap Replay to replay) ──
               RouteMapWidget(
                 coordinates: widget.activity.routeCoordinates,
                 interactive: true,
                 height: 280,
+                animate: true,
+                animationDuration: const Duration(seconds: 3),
               ),
 
               const SizedBox(height: 24),

@@ -287,53 +287,74 @@ class _FeedPostCard extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
+            // Photo
             Image.file(File(path), fit: BoxFit.cover),
-            Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.center,
-                  colors: [Color(0x99000000), Color(0x00000000)],
+
+            // Top fade — non-interactive
+            IgnorePointer(
+              child: Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.center,
+                    colors: [Color(0x99000000), Color(0x00000000)],
+                  ),
                 ),
               ),
             ),
-            Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.bottomCenter,
-                  end: Alignment.center,
-                  colors: [Color(0xCC000000), Color(0x00000000)],
+
+            // Bottom fade — non-interactive
+            IgnorePointer(
+              child: Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.center,
+                    colors: [Color(0xCC000000), Color(0x00000000)],
+                  ),
                 ),
               ),
             ),
-              Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _OverlayStat('Distance', formatDistance(activity.distance)),
-                  const SizedBox(height: 10),
-                  _OverlayStat('Pace', formatPace(activity.pace)),
-                  const SizedBox(height: 10),
-                  _OverlayStat('Time', formatDuration(activity.durationSeconds)),
-                  const SizedBox(height: 14),
-                  // ── Orange GPS route outline ──────────────────
-                  if (activity.routeCoordinates.length >= 2)
-                    RouteOutlineWidget(
-                      coordinates: activity.routeCoordinates,
-                      size: 110,
-                    ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'STRAVA',
-                    style: TextStyle(
-                      color: Color(0xFFFC4C02),
-                      fontSize: 16,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 4,
-                      shadows: [Shadow(blurRadius: 4, color: CupertinoColors.black)],
+
+            // Responsive overlay — scales route art + gaps to available height
+            IgnorePointer(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Align(
+                  alignment: Alignment.center,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _OverlayStat('Distance', formatDistance(activity.distance)),
+                        const SizedBox(height: 6),
+                        _OverlayStat('Pace', formatPace(activity.pace)),
+                        const SizedBox(height: 6),
+                        _OverlayStat('Time', formatDuration(activity.durationSeconds)),
+                        const SizedBox(height: 8),
+                        if (activity.routeCoordinates.isNotEmpty)
+                          RouteOutlineWidget(
+                            coordinates: activity.routeCoordinates,
+                            size: 80,
+                          ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'STRAVA',
+                          style: TextStyle(
+                            color: Color(0xFFFC4C02),
+                            fontSize: 15,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 4,
+                            shadows: [
+                              Shadow(blurRadius: 4, color: CupertinoColors.black)
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ],
+                ),
               ),
             ),
           ],

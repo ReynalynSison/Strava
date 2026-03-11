@@ -10,7 +10,17 @@ class RouteOutlinePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (coordinates.length < 2) return;
+    if (coordinates.isEmpty) return;
+
+    // Single point — draw a plain centred orange dot
+    if (coordinates.length == 1) {
+      final center = Offset(size.width / 2, size.height / 2);
+      canvas.drawCircle(center, 8,
+          Paint()..color = const Color(0xFFFC4C02)..style = PaintingStyle.fill);
+      canvas.drawCircle(center, 8,
+          Paint()..color = CupertinoColors.white..style = PaintingStyle.stroke..strokeWidth = 2);
+      return;
+    }
 
     // ── Bounding box ──────────────────────────────────────────────────────
     double minLat = coordinates.first['lat']!;
@@ -104,7 +114,7 @@ class RouteOutlineWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (coordinates.length < 2) return const SizedBox.shrink();
+    if (coordinates.isEmpty) return const SizedBox.shrink();
     return SizedBox(
       width: size,
       height: size,

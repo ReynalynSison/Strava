@@ -79,7 +79,9 @@ class TrackingService {
     final distanceMeters =
         LocationService().calculateDistance(routeCoordinates);
     final durationSecs = _stopwatch.elapsed.inSeconds;
-    final pace = currentPaceMinPerKm;
+    // Guard: distance < 100 m means essentially stationary — save 0.0 so
+    // the UI shows --'--" instead of an absurd pace like 76'47"/km.
+    final pace = distanceMeters >= 100 ? currentPaceMinPerKm : 0.0;
 
     return ActivityModel(
       distance: distanceMeters,
@@ -97,4 +99,3 @@ class TrackingService {
     routeCoordinates.add({'lat': lat, 'lng': lng});
   }
 }
-

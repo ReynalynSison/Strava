@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import '../models/activity_model.dart';
+import '../services/demo_service.dart';
 import '../services/storage_service.dart';
 import '../screens/activity_summary_screen.dart';
 import '../widgets/activity_card_widget.dart';
@@ -15,8 +16,10 @@ class HistoryScreen extends StatefulWidget {
 
 class _HistoryScreenState extends State<HistoryScreen> {
   final StorageService _storage = StorageService();
+  final DemoService _demo = DemoService();
   List<ActivityModel> _activities = [];
   bool _isLoading = true;
+  bool _isSeeding = false;
 
   // ─── Lifecycle ────────────────────────────────────────────────────────────
 
@@ -35,6 +38,56 @@ class _HistoryScreenState extends State<HistoryScreen> {
       _activities = activities;
       _isLoading = false;
     });
+  }
+
+  // ─── Demo Seeder ──────────────────────────────────────────────────────────
+
+  Future<void> _seedDemo() async {
+    setState(() => _isSeeding = true);
+    await _demo.seedDemoRun();
+    await _loadActivities();
+    if (!mounted) return;
+    setState(() => _isSeeding = false);
+  }
+
+  Future<void> _seedStationary() async {
+    setState(() => _isSeeding = true);
+    await _demo.seedStationaryDemo();
+    await _loadActivities();
+    if (!mounted) return;
+    setState(() => _isSeeding = false);
+  }
+
+  void _showDemoSheet() {
+    showCupertinoModalPopup<void>(
+      context: context,
+      builder: (_) => CupertinoActionSheet(
+        title: const Text('Add Demo Run'),
+        message: const Text(
+            'Inserts a fake activity so you can test the UI without running.'),
+        actions: [
+          CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.pop(context);
+              _seedDemo();
+            },
+            child: const Text('🏃 Demo Run (~2.1 km Lisbon loop)'),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.pop(context);
+              _seedStationary();
+            },
+            child: const Text('📍 Stationary Demo (0 m — single dot test)'),
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          isDefaultAction: true,
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+      ),
+    );
   }
 
   // ─── Delete ───────────────────────────────────────────────────────────────
@@ -71,8 +124,18 @@ class _HistoryScreenState extends State<HistoryScreen> {
   @override
   Widget build(BuildContext context) {
     return CupertinoPageScaffold(
-      navigationBar: const CupertinoNavigationBar(
-        middle: Text('History'),
+      navigationBar: CupertinoNavigationBar(
+        middle: const Text('History'),
+        trailing: _isSeeding
+            ? const CupertinoActivityIndicator()
+            : GestureDetector(
+                onTap: _showDemoSheet,
+                child: const Icon(
+                  CupertinoIcons.wand_stars,
+                  size: 22,
+                  color: Color(0xFFFC4C02),
+                ),
+              ),
       ),
       child: _isLoading
           ? const Center(child: CupertinoActivityIndicator(radius: 16))
