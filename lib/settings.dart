@@ -1,18 +1,19 @@
 import 'package:flutter/cupertino.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:local_auth/local_auth.dart';
 import 'main.dart';
 import 'models/activity_model.dart';
-import 'providers/app_providers.dart';
+import 'services/storage_service.dart';
 
-class Settings extends ConsumerStatefulWidget {
+class Settings extends StatefulWidget {
   const Settings({super.key});
 
   @override
-  ConsumerState<Settings> createState() => _SettingsState();
+  State<Settings> createState() => _SettingsState();
 }
 
-class _SettingsState extends ConsumerState<Settings> {
+class _SettingsState extends State<Settings> {
+  final box = Hive.box("database");
   final LocalAuthentication _auth = LocalAuthentication();
   bool _isDeletingAll = false;
 
@@ -88,7 +89,7 @@ class _SettingsState extends ConsumerState<Settings> {
       routeCoordinates: coords,
     );
 
-    await ref.read(activityProvider.notifier).addActivity(activity);
+    await StorageService().saveActivity(activity);
     if (!mounted) return;
 
     showCupertinoDialog(
@@ -113,7 +114,8 @@ class _SettingsState extends ConsumerState<Settings> {
 
   Future<void> _deleteAllActivities(BuildContext ctx) async {
     // First ask for biometric confirmation if enabled
-    final biometricsEnabled = ref.read(appSettingsProvider).biometrics;
+    final biometricsEnabled =
+        box.get("biometrics", defaultValue: false) as bool;
 
     if (biometricsEnabled) {
       try {
@@ -148,7 +150,7 @@ class _SettingsState extends ConsumerState<Settings> {
             onPressed: () async {
               Navigator.pop(ctx);
               setState(() => _isDeletingAll = true);
-              await ref.read(activityProvider.notifier).clearActivities();
+              await StorageService().clearAllActivities();
               if (!mounted) return;
               setState(() => _isDeletingAll = false);
               // Pop back to root so Home refreshes
@@ -169,22 +171,23 @@ class _SettingsState extends ConsumerState<Settings> {
 
   @override
   Widget build(BuildContext context) {
-    final settings = ref.watch(appSettingsProvider);
-    final notifier = ref.read(appSettingsProvider.notifier);
-    return CupertinoPageScaffold(
-      navigationBar: const CupertinoNavigationBar(
-        middle: Text('Settings'),
-      ),
-      child: ListView(
-        children: [
+    return ValueListenableBuilder(
+      valueListenable: box.listenable(),
+      builder: (context, Box db, _) {
+        return CupertinoPageScaffold(
+          navigationBar: const CupertinoNavigationBar(
+            middle: Text('Settings'),
+          ),
+          child: ListView(
+            children: [
               // ── APPEARANCE ────────────────────────────────────────
               CupertinoListSection.insetGrouped(
                 header: const Text('APPEARANCE'),
                 children: [
                   _tile(
                     trailing: CupertinoSwitch(
-                      value: settings.darkMode,
-                      onChanged: notifier.toggleDarkMode,
+                      value: db.get("darkMode", defaultValue: false),
+                      onChanged: (v) => box.put("darkMode", v),
                     ),
                     title: 'Dark Mode',
                     color: CupertinoColors.systemIndigo,
@@ -199,11 +202,13 @@ class _SettingsState extends ConsumerState<Settings> {
                 children: [
                   _tile(
                     trailing: CupertinoSwitch(
-                      value: settings.useMetric,
-                      onChanged: notifier.toggleUnits,
+                      value: db.get("useMetric", defaultValue: true),
+                      onChanged: (v) => box.put("useMetric", v),
                     ),
                     title: 'Use Metric',
-                    additionalInfo: settings.useMetric ? 'km' : 'miles',
+                    additionalInfo: db.get("useMetric", defaultValue: true)
+                        ? 'km'
+                        : 'miles',
                     color: CupertinoColors.systemTeal,
                     icon: CupertinoIcons.globe,
                   ),
@@ -216,8 +221,8 @@ class _SettingsState extends ConsumerState<Settings> {
                 children: [
                   _tile(
                     trailing: CupertinoSwitch(
-                      value: settings.biometrics,
-                      onChanged: notifier.toggleBiometrics,
+                      value: db.get("biometrics", defaultValue: false),
+                      onChanged: (v) => box.put("biometrics", v),
                     ),
                     title: 'Biometrics',
                     color: CupertinoColors.systemGreen,
@@ -247,24 +252,6 @@ class _SettingsState extends ConsumerState<Settings> {
                 ],
               ),
 
-              // ── NOTIFICATIONS ─────────────────────────────────────
-              CupertinoListSection.insetGrouped(
-                header: const Text('NOTIFICATIONS'),
-                children: [
-                  _tile(
-                    trailing: CupertinoSwitch(
-                      value: settings.runNotificationsEnabled,
-                      onChanged: notifier.toggleRunNotifications,
-                    ),
-                    title: 'Run Notifications',
-                    additionalInfo:
-                        settings.runNotificationsEnabled ? 'On' : 'Off',
-                    color: CupertinoColors.systemOrange,
-                    icon: CupertinoIcons.bell_fill,
-                  ),
-                ],
-              ),
-
               // ── DEV / TESTING ─────────────────────────────────────────
               CupertinoListSection.insetGrouped(
                 header: const Text('DEV / TESTING'),
@@ -290,7 +277,7 @@ class _SettingsState extends ConsumerState<Settings> {
                     title: 'Sign Out',
                     color: CupertinoColors.systemPurple,
                     icon: CupertinoIcons.square_arrow_left,
-                    additionalInfo: settings.username,
+                    additionalInfo: db.get("username") ?? '',
                     onTap: () {
                       showCupertinoDialog(
                         context: context,
@@ -325,6 +312,8 @@ class _SettingsState extends ConsumerState<Settings> {
               ),
             ],
           ),
+        );
+      },
     );
   }
 }
