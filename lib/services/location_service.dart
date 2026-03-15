@@ -32,6 +32,11 @@ class LocationService {
     );
   }
 
+  /// Opens the device location settings screen.
+  Future<bool> openLocationSettings() {
+    return Geolocator.openLocationSettings();
+  }
+
   /// Returns a stream of position updates for real-time tracking.
   /// Position updates every ~3 meters of movement for a smooth, accurate route line.
   Stream<Position> getPositionStream() {

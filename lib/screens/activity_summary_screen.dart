@@ -1,34 +1,41 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/activity_model.dart';
+import '../providers/app_providers.dart';
 import '../services/share_service.dart';
 import '../utils/formatters.dart';
 import '../widgets/activity_stats_widget.dart';
-import '../widgets/animated_route_widget.dart';
 import '../widgets/route_map_widget.dart';
 import '../widgets/shareable_card_widget.dart';
 
+final _summarySharingProvider =
+    StateProvider.autoDispose.family<bool, String>((ref, _) => false);
+
 /// Full Activity Summary screen — shown after a run is saved.
-class ActivitySummaryScreen extends StatefulWidget {
+class ActivitySummaryScreen extends ConsumerStatefulWidget {
   final ActivityModel activity;
 
   const ActivitySummaryScreen({super.key, required this.activity});
 
   @override
-  State<ActivitySummaryScreen> createState() => _ActivitySummaryScreenState();
+  ConsumerState<ActivitySummaryScreen> createState() => _ActivitySummaryScreenState();
 }
 
-class _ActivitySummaryScreenState extends State<ActivitySummaryScreen> {
+class _ActivitySummaryScreenState extends ConsumerState<ActivitySummaryScreen> {
   // Key attached to the RepaintBoundary wrapping ShareableCardWidget
   final GlobalKey _shareKey = GlobalKey();
-  bool _isSharing = false;
 
   Future<void> _share() async {
-    setState(() => _isSharing = true);
+    final useMetric = ref.read(appSettingsProvider).useMetric;
+    final sharingState = ref.read(
+      _summarySharingProvider(widget.activity.id).notifier,
+    );
+    sharingState.state = true;
     try {
       await ShareService().shareActivityImage(
         _shareKey,
         text:
-            'Just ran ${formatDistance(widget.activity.distance)} in ${formatDuration(widget.activity.durationSeconds)} 🏃 #RunTracker',
+            'Just ran ${formatDistance(widget.activity.distance, useMetric: useMetric)} in ${formatDuration(widget.activity.durationSeconds)} 🏃 #RunTracker',
       );
     } catch (e) {
       if (!mounted) return;
@@ -47,12 +54,15 @@ class _ActivitySummaryScreenState extends State<ActivitySummaryScreen> {
         ),
       );
     } finally {
-      if (mounted) setState(() => _isSharing = false);
+      if (mounted) {
+        sharingState.state = false;
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final isSharing = ref.watch(_summarySharingProvider(widget.activity.id));
     return CupertinoPageScaffold(
       navigationBar: const CupertinoNavigationBar(
         middle: Text('Summary'),
@@ -80,45 +90,18 @@ class _ActivitySummaryScreenState extends State<ActivitySummaryScreen> {
 
               const SizedBox(height: 16),
 
-              // ── Route Map + animated draw-in ────────────────────────
-              // Stack: static map tiles at bottom, animated route on top.
-              // AnimatedRouteWidget uses pure-Canvas math so it works
-              // immediately without waiting for the map camera to initialize.
-              SizedBox(
+              // ── Route Map (single renderer + built-in animation) ────
+              RouteMapWidget(
+                coordinates: widget.activity.routeCoordinates,
+                interactive: true,
                 height: 280,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
-                  child: Stack(
-                    children: [
-                      // Static map — tiles only, no animation
-                      RouteMapWidget(
-                        coordinates: widget.activity.routeCoordinates,
-                        interactive: false,
-                        height: 280,
-                        showEndMarkers: false,
-                        animate: false,
-                      ),
-                      // Animated route drawn via CustomPaint (no MapController needed)
-                      Positioned.fill(
-                        child: AnimatedRouteWidget(
-                          coordinates: widget.activity.routeCoordinates,
-                          distance: widget.activity.distance,
-                          durationSeconds: widget.activity.durationSeconds,
-                          pace: widget.activity.pace,
-                          animationDuration: const Duration(seconds: 3),
-                          transparentBackground: true,
-                          showStatsOverlay: false,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                animate: true,
+                showEndMarkers: true,
               ),
 
               const SizedBox(height: 24),
 
               // ── Shareable Card Preview ──────────────────────────────
-              // Wrapped in RepaintBoundary — this is what gets captured
               const Text(
                 'SHARE PREVIEW',
                 style: TextStyle(
@@ -142,8 +125,8 @@ class _ActivitySummaryScreenState extends State<ActivitySummaryScreen> {
               CupertinoButton(
                 color: CupertinoColors.systemBlue,
                 borderRadius: BorderRadius.circular(12),
-                onPressed: _isSharing ? null : _share,
-                child: _isSharing
+                onPressed: isSharing ? null : _share,
+                child: isSharing
                     ? const CupertinoActivityIndicator()
                     : const Row(
                         mainAxisAlignment: MainAxisAlignment.center,

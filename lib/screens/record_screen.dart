@@ -1,130 +1,84 @@
-import 'dart:async';
 import 'dart:io';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_map/flutter_map.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
-import '../services/location_service.dart';
-import '../services/tracking_service.dart';
-import '../services/storage_service.dart';
+import '../providers/app_providers.dart';
 import '../models/activity_model.dart';
 import 'activity_summary_screen.dart';
 import 'run_photo_screen.dart';
 
-class RecordScreen extends StatefulWidget {
+class RecordScreen extends ConsumerStatefulWidget {
   const RecordScreen({super.key});
 
   @override
-  State<RecordScreen> createState() => _RecordScreenState();
+  ConsumerState<RecordScreen> createState() => _RecordScreenState();
 }
 
-class _RecordScreenState extends State<RecordScreen> {
-  // ─── Services ─────────────────────────────────────────────────────────────
-  final LocationService _locationService = LocationService();
-  final TrackingService _trackingService = TrackingService();
-
+class _RecordScreenState extends ConsumerState<RecordScreen> {
   // ─── Map ──────────────────────────────────────────────────────────────────
   final MapController _mapController = MapController();
+  bool _didShowPermissionDialog = false;
+  late final ProviderSubscription<TrackingState> _trackingSub;
 
-  // ─── State ────────────────────────────────────────────────────────────────
-  Position? _currentPosition;
-  bool _isLoading = true;
-  String? _errorMessage;
-
-  // ─── Tracking ─────────────────────────────────────────────────────────────
-  StreamSubscription<Position>? _positionStream;
-  Timer? _uiTimer;
+  static const double _minDistanceKmForDirectSave = 0.1; // 100 m
+  static const int _minDurationSecsForDirectSave = 60;
 
   // ─── Lifecycle ────────────────────────────────────────────────────────────
 
   @override
   void initState() {
     super.initState();
-    _initializeLocation();
+    _trackingSub = ref.listenManual<TrackingState>(
+      trackingProvider,
+      (previous, next) {
+        final prevPos = previous?.currentPosition;
+        final nextPos = next.currentPosition;
+
+        if (next.errorMessage == 'Location permission denied' &&
+            !_didShowPermissionDialog) {
+          _didShowPermissionDialog = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _showPermissionDeniedDialog();
+          });
+        }
+
+        if (nextPos != null &&
+            (prevPos == null ||
+                prevPos.latitude != nextPos.latitude ||
+                prevPos.longitude != nextPos.longitude)) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            _mapController.move(
+              LatLng(nextPos.latitude, nextPos.longitude),
+              _mapController.camera.zoom,
+            );
+          });
+        }
+      },
+    );
+    Future.microtask(() => ref.read(trackingProvider.notifier).initializeLocation());
   }
 
   @override
   void dispose() {
-    _positionStream?.cancel();
-    _uiTimer?.cancel();
+    _trackingSub.close();
     _mapController.dispose();
     super.dispose();
-  }
-
-  // ─── Location Init ────────────────────────────────────────────────────────
-
-  Future<void> _initializeLocation() async {
-    final hasPermission = await _locationService.requestPermission();
-    if (!mounted) return;
-
-    if (!hasPermission) {
-      setState(() {
-        _isLoading = false;
-        _errorMessage = 'Location permission denied';
-      });
-      _showPermissionDeniedDialog();
-      return;
-    }
-
-    try {
-      final position = await _locationService.getCurrentLocation();
-      if (!mounted) return;
-      setState(() {
-        _currentPosition = position;
-        _isLoading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _isLoading = false;
-        _errorMessage = 'Failed to get location: $e';
-      });
-    }
   }
 
   // ─── Tracking Controls ────────────────────────────────────────────────────
 
   void _startTracking() {
-    _trackingService.startTracking();
-
-    // Start GPS position stream
-    _positionStream = _locationService.getPositionStream().listen((position) {
-      if (!mounted) return;
-      _trackingService.addCoordinate(position.latitude, position.longitude);
-      setState(() {
-        _currentPosition = position;
-      });
-      // Keep map centered on user
-      _mapController.move(
-        LatLng(position.latitude, position.longitude),
-        _mapController.camera.zoom,
-      );
-    });
-
-    // Refresh stats UI every second
-    _uiTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() {});
-    });
-
-    setState(() {});
+    ref.read(trackingProvider.notifier).startRun();
   }
 
   void _pauseTracking() {
-    _trackingService.pauseTracking();
-    _positionStream?.pause();
-    _uiTimer?.cancel();
-    setState(() {});
+    ref.read(trackingProvider.notifier).pauseRun();
   }
 
   void _resumeTracking() {
-    _trackingService.resumeTracking();
-    _positionStream?.resume();
-
-    _uiTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() {});
-    });
-
-    setState(() {});
+    ref.read(trackingProvider.notifier).resumeRun();
   }
 
   void _showStopConfirmation() {
@@ -137,8 +91,10 @@ class _RecordScreenState extends State<RecordScreen> {
           CupertinoDialogAction(
             isDestructiveAction: true,
             child: const Text('Stop'),
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(context);
+              final shouldProceed = await _handleShortRunGuardBeforeStop();
+              if (!shouldProceed || !mounted) return;
               _stopTracking();
             },
           ),
@@ -152,17 +108,64 @@ class _RecordScreenState extends State<RecordScreen> {
     );
   }
 
-  void _stopTracking() async {
-    // Cancel streams and timers first
-    _positionStream?.cancel();
-    _positionStream = null;
-    _uiTimer?.cancel();
-    _uiTimer = null;
+  Future<bool> _handleShortRunGuardBeforeStop() async {
+    final trackingState = ref.read(trackingProvider);
+    final isShortOrStationary =
+        trackingState.distanceKm < _minDistanceKmForDirectSave ||
+        trackingState.durationSeconds < _minDurationSecsForDirectSave;
 
-    // Get the completed activity from TrackingService
-    ActivityModel activity = _trackingService.stopTracking();
+    if (!isShortOrStationary) return true;
+
+    final decision = await showCupertinoDialog<_ShortRunDecision>(
+      context: context,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: const Text('Very Short Run'),
+        content: const Text(
+          'This run is very short and may be accidental.\n\n'
+          'You can keep running, discard it, or save anyway.',
+        ),
+        actions: [
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            child: const Text('Discard Run'),
+            onPressed: () => Navigator.pop(ctx, _ShortRunDecision.discard),
+          ),
+          CupertinoDialogAction(
+            isDefaultAction: true,
+            child: const Text('Continue Running'),
+            onPressed: () => Navigator.pop(ctx, _ShortRunDecision.continueRun),
+          ),
+          CupertinoDialogAction(
+            child: const Text('Save Anyway'),
+            onPressed: () => Navigator.pop(ctx, _ShortRunDecision.saveAnyway),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted) return false;
+
+    switch (decision) {
+      case _ShortRunDecision.saveAnyway:
+        return true;
+      case _ShortRunDecision.discard:
+        ref.read(trackingProvider.notifier).clearRoute();
+        return false;
+      case _ShortRunDecision.continueRun:
+        final state = ref.read(trackingProvider);
+        if (state.isPaused) {
+          ref.read(trackingProvider.notifier).resumeRun();
+        }
+        return false;
+      case null:
+        return false;
+    }
+  }
+
+  void _stopTracking() async {
+    // Get the completed activity from tracking provider/service.
+    ActivityModel activity = ref.read(trackingProvider.notifier).stopRun();
     if (!mounted) return;
-    setState(() {});
 
     // ── Step 1: Take a post-run photo ──────────────────────────────────────
     final File? photo = await Navigator.push<File?>(
@@ -314,8 +317,8 @@ class _RecordScreenState extends State<RecordScreen> {
       ),
     );
 
-    // Save to Hive
-    await StorageService().saveActivity(activity);
+    // Save via provider so app-wide activity state updates immediately.
+    await ref.read(activityProvider.notifier).addActivity(activity);
 
     if (!mounted) return;
     Navigator.pop(context); // dismiss saving dialog
@@ -327,10 +330,7 @@ class _RecordScreenState extends State<RecordScreen> {
         builder: (_) => ActivitySummaryScreen(activity: activity),
       ),
     ).then((_) {
-      if (mounted) {
-        _trackingService.routeCoordinates.clear();
-        setState(() {});
-      }
+      ref.read(trackingProvider.notifier).clearRoute();
     });
   }
 
@@ -348,9 +348,9 @@ class _RecordScreenState extends State<RecordScreen> {
         actions: [
           CupertinoDialogAction(
             child: const Text('Open Settings'),
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(context);
-              Geolocator.openLocationSettings();
+              await ref.read(trackingProvider.notifier).openLocationSettings();
             },
           ),
           CupertinoDialogAction(
@@ -367,9 +367,14 @@ class _RecordScreenState extends State<RecordScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) return _buildLoading();
-    if (_errorMessage != null) return _buildError();
-    if (_currentPosition == null) return _buildNoLocation();
+    final trackingState = ref.watch(trackingProvider);
+
+
+    if (trackingState.isLoading) return _buildLoading();
+    if (trackingState.errorMessage != null) {
+      return _buildError(trackingState.errorMessage!);
+    }
+    if (trackingState.currentPosition == null) return _buildNoLocation();
     return _buildMap();
   }
 
@@ -396,7 +401,7 @@ class _RecordScreenState extends State<RecordScreen> {
 
   // ─── Error State ──────────────────────────────────────────────────────────
 
-  Widget _buildError() {
+  Widget _buildError(String errorMessage) {
     return CupertinoPageScaffold(
       navigationBar: const CupertinoNavigationBar(middle: Text('Record')),
       child: Center(
@@ -408,18 +413,15 @@ class _RecordScreenState extends State<RecordScreen> {
               const Icon(CupertinoIcons.location_slash,
                   size: 64, color: CupertinoColors.systemRed),
               const SizedBox(height: 16),
-              Text(_errorMessage!,
+              Text(errorMessage,
                   textAlign: TextAlign.center,
                   style: const TextStyle(fontSize: 16)),
               const SizedBox(height: 24),
               CupertinoButton.filled(
                 child: const Text('Retry'),
                 onPressed: () {
-                  setState(() {
-                    _isLoading = true;
-                    _errorMessage = null;
-                  });
-                  _initializeLocation();
+                  _didShowPermissionDialog = false;
+                  ref.read(trackingProvider.notifier).initializeLocation();
                 },
               ),
             ],
@@ -439,15 +441,17 @@ class _RecordScreenState extends State<RecordScreen> {
   // ─── Main Map View ────────────────────────────────────────────────────────
 
   Widget _buildMap() {
-    final isTracking = _trackingService.isTracking;
-    final isPaused = _trackingService.isPaused;
+    final trackingState = ref.watch(trackingProvider);
+    final isTracking = trackingState.isRunning;
+    final isPaused = trackingState.isPaused;
+    final currentPosition = trackingState.currentPosition!;
     final isDark = CupertinoTheme.brightnessOf(context) == Brightness.dark;
     final tileUrl = isDark
         ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
         : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
 
     // Build polyline from recorded coordinates
-    final routePoints = _trackingService.routeCoordinates
+    final routePoints = trackingState.coordinates
         .map((c) => LatLng(c['lat']!, c['lng']!))
         .toList();
 
@@ -460,8 +464,8 @@ class _RecordScreenState extends State<RecordScreen> {
             mapController: _mapController,
             options: MapOptions(
               initialCenter: LatLng(
-                _currentPosition!.latitude,
-                _currentPosition!.longitude,
+                currentPosition.latitude,
+                currentPosition.longitude,
               ),
               initialZoom: 16.0,
             ),
@@ -490,8 +494,8 @@ class _RecordScreenState extends State<RecordScreen> {
                 markers: [
                   Marker(
                     point: LatLng(
-                      _currentPosition!.latitude,
-                      _currentPosition!.longitude,
+                      currentPosition.latitude,
+                      currentPosition.longitude,
                     ),
                     width: 20,
                     height: 20,
@@ -552,19 +556,19 @@ class _RecordScreenState extends State<RecordScreen> {
                       children: [
                         _statTile(
                           label: 'DISTANCE',
-                          value: _trackingService.currentDistanceKm < 1
-                              ? '${(_trackingService.currentDistanceKm * 1000).toStringAsFixed(0)} m'
-                              : '${_trackingService.currentDistanceKm.toStringAsFixed(2)} km',
+                          value: trackingState.distanceKm < 1
+                              ? '${(trackingState.distanceKm * 1000).toStringAsFixed(0)} m'
+                              : '${trackingState.distanceKm.toStringAsFixed(2)} km',
                         ),
                         _statDivider(),
                         _statTile(
                           label: 'TIME',
-                          value: _trackingService.formattedDuration,
+                          value: trackingState.formattedDuration,
                         ),
                         _statDivider(),
                         _statTile(
                           label: 'PACE',
-                          value: _trackingService.formattedPace,
+                          value: trackingState.formattedPace,
                         ),
                       ],
                     ),
@@ -722,4 +726,10 @@ class _RecordScreenState extends State<RecordScreen> {
       color: CupertinoColors.separator,
     );
   }
+}
+
+enum _ShortRunDecision {
+  saveAnyway,
+  discard,
+  continueRun,
 }

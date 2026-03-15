@@ -1,58 +1,36 @@
 import 'package:flutter/cupertino.dart';
-import 'package:hive_flutter/hive_flutter.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/activity_model.dart';
-import '../services/storage_service.dart';
+import '../providers/app_providers.dart';
 import '../utils/formatters.dart';
+import '../widgets/motivation_summary_widget.dart';
 import '../widgets/profile_avatar_widget.dart';
 
-class YouScreen extends StatefulWidget {
+class YouScreen extends ConsumerWidget {
   const YouScreen({super.key});
 
-  @override
-  State<YouScreen> createState() => _YouScreenState();
-}
-
-class _YouScreenState extends State<YouScreen> {
-  final StorageService _storage = StorageService();
-
-  List<ActivityModel> _activities = [];
-  bool _isLoading = true;
-
-  // ─── Lifecycle ────────────────────────────────────────────────────────────
-
-  @override
-  void initState() {
-    super.initState();
-    _loadActivities();
-  }
-
-  Future<void> _loadActivities() async {
-    final activities = await _storage.loadAllActivities();
-    if (!mounted) return;
-    setState(() {
-      _activities = activities;
-      _isLoading = false;
-    });
+  Future<void> _refreshActivities(WidgetRef ref) async {
+    await ref.read(activityProvider.notifier).loadActivities();
   }
 
   // ─── Computed Stats ───────────────────────────────────────────────────────
 
   /// Activities in the current calendar week (Mon–Sun).
-  List<ActivityModel> get _thisWeekActivities {
+  List<ActivityModel> _thisWeekActivities(List<ActivityModel> activities) {
     final now = DateTime.now();
     // Monday of the current week
     final monday = DateTime(now.year, now.month, now.day)
         .subtract(Duration(days: now.weekday - 1));
     final sunday = monday.add(const Duration(days: 7));
-    return _activities
+    return activities
         .where((a) => !a.date.isBefore(monday) && a.date.isBefore(sunday))
         .toList();
   }
 
   /// Activities in the current calendar month.
-  List<ActivityModel> get _thisMonthActivities {
+  List<ActivityModel> _thisMonthActivities(List<ActivityModel> activities) {
     final now = DateTime.now();
-    return _activities
+    return activities
         .where((a) => a.date.year == now.year && a.date.month == now.month)
         .toList();
   }
@@ -70,12 +48,12 @@ class _YouScreenState extends State<YouScreen> {
 
   /// Returns a list of 7 daily distance totals (km) for the current week,
   /// index 0 = Monday, index 6 = Sunday.
-  List<double> get _weeklyBarData {
+  List<double> _weeklyBarData(List<ActivityModel> thisWeekActivities) {
     final now = DateTime.now();
     final monday = DateTime(now.year, now.month, now.day)
         .subtract(Duration(days: now.weekday - 1));
     final List<double> data = List.filled(7, 0.0);
-    for (final a in _thisWeekActivities) {
+    for (final a in thisWeekActivities) {
       final day = a.date
           .difference(monday)
           .inDays
@@ -88,9 +66,15 @@ class _YouScreenState extends State<YouScreen> {
   // ─── Build ────────────────────────────────────────────────────────────────
 
   @override
-  Widget build(BuildContext context) {
-    final username =
-        Hive.box("database").get("username", defaultValue: 'Runner') as String;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(appSettingsProvider);
+    final activityState = ref.watch(activityProvider);
+    final motivationSummary = ref.watch(motivationSummaryProvider);
+    final activities = activityState.activities;
+    final thisWeekActivities = _thisWeekActivities(activities);
+    final thisMonthActivities = _thisMonthActivities(activities);
+    final username = settings.username.isEmpty ? 'Runner' : settings.username;
+    final useMetric = settings.useMetric;
     final brightness = CupertinoTheme.of(context).brightness ?? Brightness.light;
     final isDark = brightness == Brightness.dark;
 
@@ -101,14 +85,25 @@ class _YouScreenState extends State<YouScreen> {
             largeTitle: const Text('You'),
             alwaysShowMiddle: false,
           ),
-          CupertinoSliverRefreshControl(onRefresh: _loadActivities),
-          if (_isLoading)
+          CupertinoSliverRefreshControl(
+            onRefresh: () => _refreshActivities(ref),
+          ),
+          if (activityState.isLoading)
             const SliverFillRemaining(
               child: Center(child: CupertinoActivityIndicator(radius: 16)),
             )
           else ...[
             // ── Profile Header ────────────────────────────────────────
-            SliverToBoxAdapter(child: _buildProfileHeader(username, isDark)),
+            SliverToBoxAdapter(
+              child: _buildProfileHeader(username, isDark, activities.length),
+            ),
+
+            SliverToBoxAdapter(
+              child: MotivationSummaryWidget(
+                summary: motivationSummary,
+                useMetric: useMetric,
+              ),
+            ),
 
             // ── This Week ────────────────────────────────────────────
             SliverToBoxAdapter(
@@ -116,14 +111,17 @@ class _YouScreenState extends State<YouScreen> {
             ),
             SliverToBoxAdapter(
               child: _buildStatsRow(
-                _thisWeekActivities,
+                thisWeekActivities,
                 context,
                 isDark,
+                useMetric,
               ),
             ),
 
             // ── Weekly bar chart ─────────────────────────────────────
-            SliverToBoxAdapter(child: _buildWeeklyChart(isDark)),
+            SliverToBoxAdapter(
+              child: _buildWeeklyChart(isDark, thisWeekActivities),
+            ),
 
             // ── This Month ───────────────────────────────────────────
             SliverToBoxAdapter(
@@ -131,9 +129,10 @@ class _YouScreenState extends State<YouScreen> {
             ),
             SliverToBoxAdapter(
               child: _buildStatsRow(
-                _thisMonthActivities,
+                thisMonthActivities,
                 context,
                 isDark,
+                useMetric,
               ),
             ),
 
@@ -142,7 +141,7 @@ class _YouScreenState extends State<YouScreen> {
               child: _buildSectionHeader('ALL TIME'),
             ),
             SliverToBoxAdapter(
-              child: _buildAllTimeCard(isDark),
+              child: _buildAllTimeCard(isDark, useMetric, activities),
             ),
 
             const SliverToBoxAdapter(child: SizedBox(height: 40)),
@@ -154,7 +153,7 @@ class _YouScreenState extends State<YouScreen> {
 
   // ─── Widgets ──────────────────────────────────────────────────────────────
 
-  Widget _buildProfileHeader(String username, bool isDark) {
+  Widget _buildProfileHeader(String username, bool isDark, int runsCount) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
       child: Container(
@@ -192,7 +191,7 @@ class _YouScreenState extends State<YouScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '${_activities.length} run${_activities.length == 1 ? '' : 's'} recorded',
+                    '$runsCount run${runsCount == 1 ? '' : 's'} recorded',
                     style: const TextStyle(
                       fontSize: 14,
                       color: CupertinoColors.secondaryLabel,
@@ -231,7 +230,7 @@ class _YouScreenState extends State<YouScreen> {
   }
 
   Widget _buildStatsRow(
-      List<ActivityModel> list, BuildContext context, bool isDark) {
+      List<ActivityModel> list, BuildContext context, bool isDark, bool useMetric) {
     final distKm = _totalDistanceKm(list);
     final duration = _totalDurationSeconds(list);
     final pace = _avgPace(list);
@@ -242,7 +241,7 @@ class _YouScreenState extends State<YouScreen> {
       child: Row(
         children: [
           _buildStatTile('Distance',
-              '${distKm.toStringAsFixed(2)} km', CupertinoIcons.location_solid,
+              formatDistance(distKm * 1000, useMetric: useMetric), CupertinoIcons.location_solid,
               const Color(0xFFFC4C02), isDark),
           const SizedBox(width: 10),
           _buildStatTile('Time',
@@ -258,7 +257,7 @@ class _YouScreenState extends State<YouScreen> {
           const SizedBox(width: 10),
           _buildStatTile(
               'Avg Pace',
-              pace > 0 ? formatPace(pace) : '--',
+              pace > 0 ? formatPace(pace, useMetric: useMetric) : '--',
               CupertinoIcons.speedometer,
               CupertinoColors.systemPurple,
               isDark),
@@ -313,8 +312,8 @@ class _YouScreenState extends State<YouScreen> {
     );
   }
 
-  Widget _buildWeeklyChart(bool isDark) {
-    final data = _weeklyBarData;
+  Widget _buildWeeklyChart(bool isDark, List<ActivityModel> thisWeekActivities) {
+    final data = _weeklyBarData(thisWeekActivities);
     final maxVal = data.reduce((a, b) => a > b ? a : b);
     final days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     final todayIndex = DateTime.now().weekday - 1; // 0=Mon
@@ -423,11 +422,15 @@ class _YouScreenState extends State<YouScreen> {
     );
   }
 
-  Widget _buildAllTimeCard(bool isDark) {
-    final totalKm = _totalDistanceKm(_activities);
-    final totalSecs = _totalDurationSeconds(_activities);
-    final avgPace = _avgPace(_activities);
-    final runs = _activities.length;
+  Widget _buildAllTimeCard(
+    bool isDark,
+    bool useMetric,
+    List<ActivityModel> activities,
+  ) {
+    final totalKm = _totalDistanceKm(activities);
+    final totalSecs = _totalDurationSeconds(activities);
+    final avgPace = _avgPace(activities);
+    final runs = activities.length;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -446,7 +449,7 @@ class _YouScreenState extends State<YouScreen> {
             Row(
               children: [
                 _buildAllTimeStat(
-                    '${totalKm.toStringAsFixed(1)} km', 'Total Distance'),
+                    formatDistance(totalKm * 1000, useMetric: useMetric), 'Total Distance'),
                 _buildAllTimeStat('$runs', 'Total Runs'),
               ],
             ),
@@ -455,7 +458,7 @@ class _YouScreenState extends State<YouScreen> {
               children: [
                 _buildAllTimeStat(formatDuration(totalSecs), 'Total Time'),
                 _buildAllTimeStat(
-                    avgPace > 0 ? formatPace(avgPace) : '--', 'Avg Pace'),
+                    avgPace > 0 ? formatPace(avgPace, useMetric: useMetric) : '--', 'Avg Pace'),
               ],
             ),
           ],

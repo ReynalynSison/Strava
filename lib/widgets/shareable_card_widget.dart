@@ -1,19 +1,22 @@
 import 'package:flutter/cupertino.dart';
 import '../models/activity_model.dart';
+import '../providers/app_providers.dart';
 import '../utils/formatters.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'route_map_widget.dart';
 
 /// A self-contained styled card designed to be captured as a share image.
 /// Wrap this in a [RepaintBoundary] with a [GlobalKey] to capture it.
 ///
 /// Contains: app branding, route map, date, distance, duration, pace.
-class ShareableCardWidget extends StatelessWidget {
+class ShareableCardWidget extends ConsumerWidget {
   final ActivityModel activity;
 
   const ShareableCardWidget({super.key, required this.activity});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final useMetric = ref.watch(appSettingsProvider).useMetric;
     final isDark = CupertinoTheme.brightnessOf(context) == Brightness.dark;
     return Container(
       width: 360,
@@ -58,7 +61,7 @@ class ShareableCardWidget extends StatelessWidget {
 
                 // Distance — hero stat
                 Text(
-                  formatDistance(activity.distance),
+                  formatDistance(activity.distance, useMetric: useMetric),
                   style: const TextStyle(
                     fontSize: 40,
                     fontWeight: FontWeight.w800,
@@ -78,7 +81,7 @@ class ShareableCardWidget extends StatelessWidget {
                     const SizedBox(width: 10),
                     _StatPill(
                       icon: CupertinoIcons.speedometer,
-                      value: formatPace(activity.pace),
+                      value: formatPace(activity.pace, useMetric: useMetric),
                     ),
                   ],
                 ),

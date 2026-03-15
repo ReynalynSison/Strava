@@ -1,47 +1,32 @@
 import 'dart:io';
 import 'package:flutter/cupertino.dart';
-import 'package:hive_flutter/hive_flutter.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/activity_model.dart';
-import '../services/storage_service.dart';
+import '../providers/app_providers.dart';
 import '../utils/formatters.dart';
+import '../widgets/motivation_summary_widget.dart';
 import '../widgets/profile_avatar_widget.dart';
 import '../widgets/route_map_widget.dart';
 import '../widgets/route_outline_painter.dart';
 import 'activity_summary_screen.dart';
 
-class HomeScreen extends StatefulWidget {
+class HomeScreen extends ConsumerWidget {
   final VoidCallback? onGoToRecord;
 
   const HomeScreen({super.key, this.onGoToRecord});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
-}
-
-class _HomeScreenState extends State<HomeScreen> {
-  final StorageService _storage = StorageService();
-  List<ActivityModel> _feedActivities = [];
-  bool _isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadFeed();
-  }
-
-  Future<void> _loadFeed() async {
-    final all = await _storage.loadAllActivities();
-    if (!mounted) return;
-    setState(() {
-      _feedActivities = all.where((a) => a.postedToFeed).toList();
-      _isLoading = false;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final username =
-        Hive.box("database").get("username", defaultValue: 'Runner') as String;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(appSettingsProvider);
+    final activityState = ref.watch(activityProvider);
+    final motivationSummary = ref.watch(motivationSummaryProvider);
+    final feedActivities =
+        activityState.activities.where((a) => a.postedToFeed).toList();
+    final username = settings.username.isEmpty ? 'Runner' : settings.username;
+    final useMetric = settings.useMetric;
+    Future<void> refreshFeed() async {
+      await ref.read(activityProvider.notifier).loadActivities();
+    }
 
     return CupertinoPageScaffold(
       child: CustomScrollView(
@@ -50,30 +35,42 @@ class _HomeScreenState extends State<HomeScreen> {
             largeTitle: const Text('Feed'),
             alwaysShowMiddle: false,
           ),
-          CupertinoSliverRefreshControl(onRefresh: _loadFeed),
+          CupertinoSliverRefreshControl(onRefresh: refreshFeed),
 
-          if (_isLoading)
+          if (activityState.isLoading)
             const SliverFillRemaining(
               child: Center(child: CupertinoActivityIndicator(radius: 16)),
             )
-          else if (_feedActivities.isEmpty)
-            SliverFillRemaining(child: _buildEmptyState())
           else ...[
+            if (activityState.activities.isNotEmpty)
+              SliverToBoxAdapter(
+                child: MotivationSummaryWidget(
+                  summary: motivationSummary,
+                  useMetric: useMetric,
+                ),
+              ),
+            if (feedActivities.isEmpty)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: _buildEmptyState(onGoToRecord: onGoToRecord),
+              )
+            else
             SliverList(
               delegate: SliverChildBuilderDelegate(
                 (context, index) =>
                     _FeedPostCard(
-                      activity: _feedActivities[index],
+                      activity: feedActivities[index],
                       username: username,
+                      useMetric: useMetric,
                       onTap: () => Navigator.push(
                         context,
                         CupertinoPageRoute(
                           builder: (_) => ActivitySummaryScreen(
-                              activity: _feedActivities[index]),
+                              activity: feedActivities[index]),
                         ),
                       ),
                     ),
-                childCount: _feedActivities.length,
+                childCount: feedActivities.length,
               ),
             ),
             const SliverToBoxAdapter(child: SizedBox(height: 32)),
@@ -83,7 +80,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState({required VoidCallback? onGoToRecord}) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(36),
@@ -113,7 +110,7 @@ class _HomeScreenState extends State<HomeScreen> {
               borderRadius: BorderRadius.circular(14),
               padding:
                   const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
-              onPressed: widget.onGoToRecord,
+              onPressed: onGoToRecord,
               child: const Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -143,11 +140,13 @@ class _HomeScreenState extends State<HomeScreen> {
 class _FeedPostCard extends StatelessWidget {
   final ActivityModel activity;
   final String username;
+  final bool useMetric;
   final VoidCallback onTap;
 
   const _FeedPostCard({
     required this.activity,
     required this.username,
+    required this.useMetric,
     required this.onTap,
   });
 
@@ -253,7 +252,7 @@ class _FeedPostCard extends StatelessWidget {
                     _StatChip(
                       icon: CupertinoIcons.location_solid,
                       label: 'Distance',
-                      value: formatDistance(activity.distance),
+                      value: formatDistance(activity.distance, useMetric: useMetric),
                       color: const Color(0xFFFC4C02),
                     ),
                     _StatChip(
@@ -265,7 +264,7 @@ class _FeedPostCard extends StatelessWidget {
                     _StatChip(
                       icon: CupertinoIcons.speedometer,
                       label: 'Pace',
-                      value: formatPace(activity.pace),
+                      value: formatPace(activity.pace, useMetric: useMetric),
                       color: CupertinoColors.systemPurple,
                     ),
                   ],
@@ -327,9 +326,9 @@ class _FeedPostCard extends StatelessWidget {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        _OverlayStat('Distance', formatDistance(activity.distance)),
+                        _OverlayStat('Distance', formatDistance(activity.distance, useMetric: useMetric)),
                         const SizedBox(height: 6),
-                        _OverlayStat('Pace', formatPace(activity.pace)),
+                        _OverlayStat('Pace', formatPace(activity.pace, useMetric: useMetric)),
                         const SizedBox(height: 6),
                         _OverlayStat('Time', formatDuration(activity.durationSeconds)),
                         const SizedBox(height: 8),

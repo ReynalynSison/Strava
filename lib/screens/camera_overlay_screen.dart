@@ -1,27 +1,29 @@
 import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/rendering.dart';
 import 'dart:ui' as ui;
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import '../models/activity_model.dart';
+import '../providers/app_providers.dart';
 import '../services/camera_overlay_service.dart';
 import '../utils/formatters.dart';
 
 /// Full-screen camera view with the activity sticker overlaid.
 /// Tap the capture button to take a photo with the sticker baked in.
 /// After capture, shows a preview with the sticker composited on top.
-class CameraOverlayScreen extends StatefulWidget {
+class CameraOverlayScreen extends ConsumerStatefulWidget {
   final ActivityModel activity;
 
   const CameraOverlayScreen({super.key, required this.activity});
 
   @override
-  State<CameraOverlayScreen> createState() => _CameraOverlayScreenState();
+  ConsumerState<CameraOverlayScreen> createState() => _CameraOverlayScreenState();
 }
 
-class _CameraOverlayScreenState extends State<CameraOverlayScreen>
+class _CameraOverlayScreenState extends ConsumerState<CameraOverlayScreen>
     with WidgetsBindingObserver {
   final CameraOverlayService _cameraService = CameraOverlayService();
 
@@ -118,6 +120,7 @@ class _CameraOverlayScreenState extends State<CameraOverlayScreen>
 
   Future<void> _sharePhoto() async {
     if (_capturedPhoto == null) return;
+    final useMetric = ref.read(appSettingsProvider).useMetric;
 
     try {
       // Capture the sticker as a PNG
@@ -138,14 +141,14 @@ class _CameraOverlayScreenState extends State<CameraOverlayScreen>
       await Share.shareXFiles(
         [XFile(photoPath, mimeType: 'image/jpeg')],
         text:
-            'Just ran ${formatDistance(widget.activity.distance)} in ${formatDuration(widget.activity.durationSeconds)} 🏃 #RunTracker',
+            'Just ran ${formatDistance(widget.activity.distance, useMetric: useMetric)} in ${formatDuration(widget.activity.durationSeconds)} 🏃 #RunTracker',
       );
     } catch (_) {
       // Fallback: share the raw photo
       await Share.shareXFiles(
         [XFile(_capturedPhoto!.path, mimeType: 'image/jpeg')],
         text:
-            'Just ran ${formatDistance(widget.activity.distance)} in ${formatDuration(widget.activity.durationSeconds)} 🏃 #RunTracker',
+            'Just ran ${formatDistance(widget.activity.distance, useMetric: useMetric)} in ${formatDuration(widget.activity.durationSeconds)} 🏃 #RunTracker',
       );
     }
   }
@@ -219,6 +222,7 @@ class _CameraOverlayScreenState extends State<CameraOverlayScreen>
   // ─── Camera View ──────────────────────────────────────────────────────────
 
   Widget _buildCameraView() {
+    final useMetric = ref.watch(appSettingsProvider).useMetric;
     final controller = _cameraService.controller;
     if (controller == null || !controller.value.isInitialized) {
       return const Center(
@@ -258,7 +262,10 @@ class _CameraOverlayScreenState extends State<CameraOverlayScreen>
             },
             child: RepaintBoundary(
               key: _stickerKey,
-              child: _ActivityStickerCard(activity: widget.activity),
+              child: _ActivityStickerCard(
+                activity: widget.activity,
+                useMetric: useMetric,
+              ),
             ),
           ),
         ),
@@ -319,6 +326,7 @@ class _CameraOverlayScreenState extends State<CameraOverlayScreen>
   // ─── Photo Preview ────────────────────────────────────────────────────────
 
   Widget _buildPreview() {
+    final useMetric = ref.watch(appSettingsProvider).useMetric;
 
     return CupertinoPageScaffold(
       backgroundColor: CupertinoColors.black,
@@ -352,7 +360,10 @@ class _CameraOverlayScreenState extends State<CameraOverlayScreen>
                   Positioned(
                     left: _stickerPosition.dx,
                     top: _stickerPosition.dy - kMinInteractiveDimensionCupertino,
-                    child: _ActivityStickerCard(activity: widget.activity),
+                    child: _ActivityStickerCard(
+                      activity: widget.activity,
+                      useMetric: useMetric,
+                    ),
                   ),
                 ],
               ),
@@ -443,8 +454,9 @@ class _CameraOverlayScreenState extends State<CameraOverlayScreen>
 /// with route line, distance hero, pace + time row, and branding.
 class _ActivityStickerCard extends StatelessWidget {
   final ActivityModel activity;
+  final bool useMetric;
 
-  const _ActivityStickerCard({required this.activity});
+  const _ActivityStickerCard({required this.activity, required this.useMetric});
 
   @override
   Widget build(BuildContext context) {
@@ -506,7 +518,7 @@ class _ActivityStickerCard extends StatelessWidget {
 
           // ── Distance — hero ──────────────────────────────
           Text(
-            formatDistance(activity.distance),
+            formatDistance(activity.distance, useMetric: useMetric),
             style: const TextStyle(
               color: CupertinoColors.white,
               fontSize: 26,
@@ -533,7 +545,7 @@ class _ActivityStickerCard extends StatelessWidget {
               const SizedBox(width: 8),
               _StickerStat(
                 icon: CupertinoIcons.speedometer,
-                value: formatPace(activity.pace),
+                value: formatPace(activity.pace, useMetric: useMetric),
               ),
             ],
           ),

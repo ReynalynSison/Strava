@@ -8,6 +8,12 @@
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
     <!-- Photo library access for profile picture (Android <13) -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>
+    <!-- Foreground service — keeps GPS alive while a run is in progress -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <!-- Required on Android 14+ (API 34+) to use location-type foreground service -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
+    <!-- Required on Android 13+ (API 33+) to post notifications -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
     <application
         android:label="faceid"
@@ -40,6 +46,12 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- Foreground service used by flutter_local_notifications during an active run.
+             foregroundServiceType="location" lets it access GPS while the screen is off. -->
+        <service
+            android:name="com.dexterous.flutterlocalnotifications.ForegroundService"
+            android:foregroundServiceType="location"
+            android:exported="false"/>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

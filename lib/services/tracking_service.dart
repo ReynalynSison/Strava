@@ -1,24 +1,43 @@
+import 'dart:async';
+
+import 'package:geolocator/geolocator.dart';
+
 import '../models/activity_model.dart';
 import 'location_service.dart';
 
 /// Manages the state of a single run tracking session.
-/// Used exclusively by RecordScreen — one instance per screen lifecycle.
+/// Owns live run lifecycle details such as GPS subscription, timer refreshes,
+/// distance/pace computation, and current position/error/loading state.
 class TrackingService {
+  TrackingService({LocationService? locationService})
+      : _locationService = locationService ?? LocationService();
+
   // ─── State ────────────────────────────────────────────────────────────────
 
+  final LocationService _locationService;
   final List<Map<String, double>> routeCoordinates = [];
   final Stopwatch _stopwatch = Stopwatch();
+  StreamSubscription<Position>? _positionStream;
+  Timer? _ticker;
+  void Function()? _onUpdate;
+
+  Position? _currentPosition;
+  bool _isLoading = true;
+  String? _errorMessage;
   bool _isPaused = false;
   bool _isTracking = false;
 
   // ─── Getters ──────────────────────────────────────────────────────────────
 
+  Position? get currentPosition => _currentPosition;
+  bool get isLoading => _isLoading;
+  String? get errorMessage => _errorMessage;
   bool get isTracking => _isTracking;
   bool get isPaused => _isPaused;
 
   /// Total distance covered so far, in kilometers.
   double get currentDistanceKm {
-    final meters = LocationService().calculateDistance(routeCoordinates);
+    final meters = _locationService.calculateDistance(routeCoordinates);
     return meters / 1000;
   }
 
@@ -50,34 +69,110 @@ class TrackingService {
     return "$minutes'$seconds\"";
   }
 
+  void bind(void Function() onUpdate) {
+    _onUpdate = onUpdate;
+  }
+
+  void _notify() => _onUpdate?.call();
+
+  Future<void> initializeLocation() async {
+    _isLoading = true;
+    _errorMessage = null;
+    _notify();
+
+    final hasPermission = await _locationService.requestPermission();
+    if (!hasPermission) {
+      _isLoading = false;
+      _errorMessage = 'Location permission denied';
+      _notify();
+      return;
+    }
+
+    try {
+      _currentPosition = await _locationService.getCurrentLocation();
+      _isLoading = false;
+      _errorMessage = null;
+      _notify();
+    } catch (e) {
+      _isLoading = false;
+      _errorMessage = 'Failed to get location: $e';
+      _notify();
+    }
+  }
+
+  Future<void> openLocationSettings() async {
+    await _locationService.openLocationSettings();
+  }
+
   // ─── Controls ─────────────────────────────────────────────────────────────
 
+  void _startTicker() {
+    _ticker?.cancel();
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _notify());
+  }
+
   void startTracking() {
+    _positionStream?.cancel();
+    _ticker?.cancel();
     routeCoordinates.clear();
     _stopwatch.reset();
     _stopwatch.start();
     _isTracking = true;
     _isPaused = false;
+
+    _positionStream = _locationService.getPositionStream().listen((position) {
+      _currentPosition = position;
+      addCoordinate(position.latitude, position.longitude);
+      _notify();
+    });
+
+    _startTicker();
+    _notify();
   }
 
   void pauseTracking() {
     _stopwatch.stop();
     _isPaused = true;
+    _positionStream?.pause();
+    _ticker?.cancel();
+    _notify();
   }
 
   void resumeTracking() {
     _stopwatch.start();
     _isPaused = false;
+    _positionStream?.resume();
+    _startTicker();
+    _notify();
+  }
+
+  /// Clears all live tracking session state so the next run starts clean.
+  void resetSession() {
+    _positionStream?.cancel();
+    _positionStream = null;
+    _ticker?.cancel();
+    _ticker = null;
+    routeCoordinates.clear();
+    _stopwatch
+      ..stop()
+      ..reset();
+    _isTracking = false;
+    _isPaused = false;
+    _errorMessage = null;
   }
 
   /// Stops tracking and returns the completed ActivityModel.
   ActivityModel stopTracking() {
+    _positionStream?.cancel();
+    _positionStream = null;
+    _ticker?.cancel();
+    _ticker = null;
     _stopwatch.stop();
     _isTracking = false;
     _isPaused = false;
 
     final distanceMeters =
-        LocationService().calculateDistance(routeCoordinates);
+        _locationService.calculateDistance(routeCoordinates);
     final durationSecs = _stopwatch.elapsed.inSeconds;
     // Guard: distance < 100 m means essentially stationary — save 0.0 so
     // the UI shows --'--" instead of an absurd pace like 76'47"/km.
@@ -97,5 +192,12 @@ class TrackingService {
   void addCoordinate(double lat, double lng) {
     if (!_isTracking || _isPaused) return;
     routeCoordinates.add({'lat': lat, 'lng': lng});
+  }
+
+  void tick() => _notify();
+
+  void dispose() {
+    _positionStream?.cancel();
+    _ticker?.cancel();
   }
 }

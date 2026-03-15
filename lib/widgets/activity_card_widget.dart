@@ -1,12 +1,14 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import '../models/activity_model.dart';
+import '../providers/app_providers.dart';
 import '../utils/formatters.dart';
 import 'route_map_widget.dart';
 
 /// A tappable activity card with a mini route map, stats row,
 /// and swipe-left-to-delete using flutter_slidable.
-class ActivityCardWidget extends StatelessWidget {
+class ActivityCardWidget extends ConsumerWidget {
   final ActivityModel activity;
   final VoidCallback onTap;
   final VoidCallback onDelete;
@@ -19,7 +21,8 @@ class ActivityCardWidget extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final useMetric = ref.watch(appSettingsProvider).useMetric;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       child: Slidable(
@@ -54,13 +57,12 @@ class ActivityCardWidget extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ── Mini Map (animated draw-in) ───────────────────
+                // ── Mini Map (static) ──────────────────────────────
                 RouteMapWidget(
                   coordinates: activity.routeCoordinates,
                   interactive: false,
                   height: 110,
-                  animate: true,
-                  animationDuration: const Duration(seconds: 2),
+                  animate: false,
                 ),
 
                 // ── Info Row ──────────────────────────────────────
@@ -84,7 +86,7 @@ class ActivityCardWidget extends StatelessWidget {
                         children: [
                           _Stat(
                             icon: CupertinoIcons.map_pin_ellipse,
-                            value: formatDistance(activity.distance),
+                            value: formatDistance(activity.distance, useMetric: useMetric),
                           ),
                           const SizedBox(width: 20),
                           _Stat(
@@ -94,7 +96,7 @@ class ActivityCardWidget extends StatelessWidget {
                           const SizedBox(width: 20),
                           _Stat(
                             icon: CupertinoIcons.speedometer,
-                            value: formatPace(activity.pace),
+                            value: formatPace(activity.pace, useMetric: useMetric),
                           ),
                           const Spacer(),
                           const Icon(

@@ -1,4 +1,5 @@
 import 'dart:ui' as ui;
+import 'dart:math' as math;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -77,9 +78,12 @@ class _RouteMapWidgetState extends State<RouteMapWidget>
     _animController?.forward();
   }
 
-  ({LatLng center, double zoom}) _fitBounds(List<LatLng> points) {
+  ({LatLng center, double zoom}) _fitBounds(List<LatLng> points, Size viewport) {
     if (points.isEmpty) return (center: const LatLng(0, 0), zoom: 13.0);
-    if (points.length == 1) return (center: points.first, zoom: 15.0);
+    if (points.length == 1) {
+      final zoom = widget.interactive ? 18.0 : 17.2;
+      return (center: points.first, zoom: zoom);
+    }
 
     double minLat = points.first.latitude;
     double maxLat = points.first.latitude;
@@ -95,19 +99,37 @@ class _RouteMapWidgetState extends State<RouteMapWidget>
 
     final centerLat = (minLat + maxLat) / 2;
     final centerLng = (minLng + maxLng) / 2;
-    final latSpan = maxLat - minLat;
-    final lngSpan = maxLng - minLng;
-    final span = latSpan > lngSpan ? latSpan : lngSpan;
+    // Viewport-aware fit so tiny runs are still visible as a line, not two dots.
+    final width = viewport.width.clamp(120.0, 1400.0);
+    final height = viewport.height.clamp(120.0, 1400.0);
+    const tileSize = 256.0;
+    const paddingFactor = 0.78; // keep route away from edges
 
-    double zoom = 15.0;
-    if (span > 0.1) zoom = 12.0;
-    else if (span > 0.05) zoom = 13.0;
-    else if (span > 0.02) zoom = 14.0;
-    else if (span > 0.005) zoom = 15.0;
-    else zoom = 16.0;
+    final latFraction = (_latRad(maxLat) - _latRad(minLat)).abs() / math.pi;
+    final lngDiff = (maxLng - minLng).abs();
+    final lngFraction = ((lngDiff > 180 ? 360 - lngDiff : lngDiff) / 360)
+        .clamp(1e-9, 1.0);
 
-    if (!widget.interactive) zoom = (zoom - 0.5).clamp(10.0, 16.0);
+    final latZoom = _zoomForFraction(height * paddingFactor, latFraction, tileSize);
+    final lngZoom = _zoomForFraction(width * paddingFactor, lngFraction, tileSize);
+    double zoom = math.min(latZoom, lngZoom);
+
+    final maxZoom = widget.interactive ? 19.2 : 18.6;
+    final minZoom = widget.interactive ? 10.0 : 9.5;
+    zoom = zoom.clamp(minZoom, maxZoom);
+
     return (center: LatLng(centerLat, centerLng), zoom: zoom);
+  }
+
+  double _latRad(double lat) {
+    final sinValue = math.sin(lat * math.pi / 180);
+    final radX2 = math.log((1 + sinValue) / (1 - sinValue)) / 2;
+    return radX2.clamp(-math.pi, math.pi);
+  }
+
+  double _zoomForFraction(double mapPx, double fraction, double tileSize) {
+    final safeFraction = fraction.clamp(1e-9, 1.0);
+    return math.log(mapPx / tileSize / safeFraction) / math.ln2;
   }
 
   @override
@@ -162,15 +184,20 @@ class _RouteMapWidgetState extends State<RouteMapWidget>
 
     final points =
         widget.coordinates.map((c) => LatLng(c['lat']!, c['lng']!)).toList();
-    final fit = _fitBounds(points);
     final isSinglePoint = points.length == 1;
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(16),
       child: SizedBox(
         height: widget.height,
-        child: Stack(
-          children: [
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final fit = _fitBounds(
+              points,
+              Size(constraints.maxWidth, constraints.maxHeight),
+            );
+            return Stack(
+              children: [
             // ── Static map — built ONCE, never rebuilt by the animation ──────
             // The polyline/markers are drawn on top via CustomPaint overlay,
             // NOT inside FlutterMap children, to avoid full FlutterMap rebuilds.
@@ -269,7 +296,9 @@ class _RouteMapWidgetState extends State<RouteMapWidget>
                   ),
                 ),
               ),
-          ],
+              ],
+            );
+          },
         ),
       ),
     );

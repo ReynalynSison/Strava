@@ -1,6 +1,8 @@
 import 'dart:math';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/activity_model.dart';
+import '../providers/app_providers.dart';
 import '../utils/formatters.dart';
 
 /// A transparent-background sticker widget that draws the route polyline
@@ -8,7 +10,7 @@ import '../utils/formatters.dart';
 ///
 /// Designed to be captured by [ShareService.exportTransparentSticker].
 /// The root is fully transparent so the exported PNG has no background.
-class StickerOverlayWidget extends StatelessWidget {
+class StickerOverlayWidget extends ConsumerWidget {
   final ActivityModel activity;
 
   /// Width and height of the sticker (square).
@@ -21,7 +23,8 @@ class StickerOverlayWidget extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final useMetric = ref.watch(appSettingsProvider).useMetric;
     return SizedBox(
       width: size,
       height: size,
@@ -44,13 +47,13 @@ class StickerOverlayWidget extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 _ShadowText(
-                  formatDistance(activity.distance),
+                  formatDistance(activity.distance, useMetric: useMetric),
                   fontSize: 28,
                   fontWeight: FontWeight.w800,
                 ),
                 const SizedBox(height: 2),
                 _ShadowText(
-                  formatPace(activity.pace),
+                  formatPace(activity.pace, useMetric: useMetric),
                   fontSize: 15,
                   fontWeight: FontWeight.w600,
                 ),

@@ -1,22 +1,24 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../models/activity_model.dart';
+import '../providers/app_providers.dart';
 import '../services/animation_service.dart';
 import '../utils/formatters.dart';
 import '../widgets/animated_route_widget.dart';
 
 /// Full-screen animated route screen with a live map background.
-class AnimatedRouteScreen extends StatefulWidget {
+class AnimatedRouteScreen extends ConsumerStatefulWidget {
   final ActivityModel activity;
 
   const AnimatedRouteScreen({super.key, required this.activity});
 
   @override
-  State<AnimatedRouteScreen> createState() => _AnimatedRouteScreenState();
+  ConsumerState<AnimatedRouteScreen> createState() => _AnimatedRouteScreenState();
 }
 
-class _AnimatedRouteScreenState extends State<AnimatedRouteScreen> {
+class _AnimatedRouteScreenState extends ConsumerState<AnimatedRouteScreen> {
   final GlobalKey _captureKey = GlobalKey();
   final AnimationService _animationService = AnimationService();
   bool _isSharing = false;
@@ -37,12 +39,13 @@ class _AnimatedRouteScreenState extends State<AnimatedRouteScreen> {
   }
 
   Future<void> _share() async {
+    final useMetric = ref.read(appSettingsProvider).useMetric;
     setState(() => _isSharing = true);
     try {
       await _animationService.shareAnimationFrame(
         _captureKey,
         text:
-            'Just ran ${formatDistance(widget.activity.distance)} in ${formatDuration(widget.activity.durationSeconds)} 🏃 #RunTracker',
+            'Just ran ${formatDistance(widget.activity.distance, useMetric: useMetric)} in ${formatDuration(widget.activity.durationSeconds)} 🏃 #RunTracker',
       );
     } catch (e) {
       if (!mounted) return;

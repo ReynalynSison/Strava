@@ -1,16 +1,19 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/activity_model.dart';
+import '../providers/app_providers.dart';
 import '../utils/formatters.dart';
 
 /// Reusable 3-column stats row — Distance | Duration | Pace.
 /// Used in ActivitySummaryScreen, ActivityCardWidget, and HomeScreen.
-class ActivityStatsWidget extends StatelessWidget {
+class ActivityStatsWidget extends ConsumerWidget {
   final ActivityModel activity;
 
   const ActivityStatsWidget({super.key, required this.activity});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final useMetric = ref.watch(appSettingsProvider).useMetric;
     return Container(
       decoration: BoxDecoration(
         color: CupertinoTheme.brightnessOf(context) == Brightness.dark
@@ -24,7 +27,7 @@ class ActivityStatsWidget extends StatelessWidget {
         children: [
           _StatColumn(
             icon: CupertinoIcons.map_pin_ellipse,
-            value: formatDistance(activity.distance),
+            value: formatDistance(activity.distance, useMetric: useMetric),
             label: 'Distance',
           ),
           _Divider(),
@@ -36,7 +39,7 @@ class ActivityStatsWidget extends StatelessWidget {
           _Divider(),
           _StatColumn(
             icon: CupertinoIcons.speedometer,
-            value: formatPace(activity.pace),
+            value: formatPace(activity.pace, useMetric: useMetric),
             label: 'Pace',
           ),
         ],

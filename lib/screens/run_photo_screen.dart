@@ -1,23 +1,25 @@
 import 'dart:io';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import '../models/activity_model.dart';
+import '../providers/app_providers.dart';
 import '../utils/formatters.dart';
 import '../widgets/route_outline_painter.dart';
 
 /// Full-screen screen shown right after finishing a run.
 /// The user can take/choose a photo; the run stats are overlaid on top.
 /// Returns the chosen [File] photo (or null if skipped) to the caller.
-class RunPhotoScreen extends StatefulWidget {
+class RunPhotoScreen extends ConsumerStatefulWidget {
   final ActivityModel activity;
 
   const RunPhotoScreen({super.key, required this.activity});
 
   @override
-  State<RunPhotoScreen> createState() => _RunPhotoScreenState();
+  ConsumerState<RunPhotoScreen> createState() => _RunPhotoScreenState();
 }
 
-class _RunPhotoScreenState extends State<RunPhotoScreen> {
+class _RunPhotoScreenState extends ConsumerState<RunPhotoScreen> {
   File? _photo;
   final _picker = ImagePicker();
   final GlobalKey _captureKey = GlobalKey();
@@ -64,6 +66,7 @@ class _RunPhotoScreenState extends State<RunPhotoScreen> {
 
   Widget _buildPickerState() {
     final a = widget.activity;
+    final useMetric = ref.watch(appSettingsProvider).useMetric;
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -76,9 +79,9 @@ class _RunPhotoScreenState extends State<RunPhotoScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               // ── Stats first (like reference image) ──────────────
-              _StatLine('Distance', formatDistance(a.distance)),
+              _StatLine('Distance', formatDistance(a.distance, useMetric: useMetric)),
               const SizedBox(height: 8),
-              _StatLine('Pace', formatPace(a.pace)),
+              _StatLine('Pace', formatPace(a.pace, useMetric: useMetric)),
               const SizedBox(height: 8),
               _StatLine('Time', formatDuration(a.durationSeconds)),
               const SizedBox(height: 28),
@@ -185,6 +188,7 @@ class _RunPhotoScreenState extends State<RunPhotoScreen> {
 
   Widget _buildPreviewState() {
     final a = widget.activity;
+    final useMetric = ref.watch(appSettingsProvider).useMetric;
 
     return Stack(
       fit: StackFit.expand,
@@ -234,9 +238,9 @@ class _RunPhotoScreenState extends State<RunPhotoScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     // Stats: small label + big value (like reference)
-                    _OverlayStat('Distance', formatDistance(a.distance)),
+                    _OverlayStat('Distance', formatDistance(a.distance, useMetric: useMetric)),
                     const SizedBox(height: 20),
-                    _OverlayStat('Pace', formatPace(a.pace)),
+                    _OverlayStat('Pace', formatPace(a.pace, useMetric: useMetric)),
                     const SizedBox(height: 20),
                     _OverlayStat('Time', formatDuration(a.durationSeconds)),
                     const SizedBox(height: 28),

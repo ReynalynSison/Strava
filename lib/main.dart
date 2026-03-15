@@ -1,8 +1,11 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:local_auth/local_auth.dart';
 
 import 'homepage.dart';
+import 'providers/app_providers.dart';
+import 'services/run_notification_service.dart';
 import 'signup.dart';
 
 void main() async {
@@ -10,37 +13,24 @@ void main() async {
   await Hive.initFlutter();
   await Hive.openBox("database");
   await Hive.openBox("activities");
-  runApp(const MyApp());
+  // Register the notification response callback before runApp so it's ready
+  // the instant Android brings the app to the foreground from a button tap.
+  await RunNotificationService.instance.initialize();
+  runApp(const ProviderScope(child: MyApp()));
 }
 
-class MyApp extends StatefulWidget {
+class MyApp extends ConsumerWidget {
   const MyApp({super.key});
 
   @override
-  State<MyApp> createState() => _State();
-}
-
-class _State extends State<MyApp> {
-  @override
-  Widget build(BuildContext context) {
-    final box = Hive.box("database");
-
-    // ValueListenableBuilder rebuilds the entire app when any Hive key changes,
-    // which includes the "darkMode" toggle set from Settings.
-    return ValueListenableBuilder(
-      valueListenable: box.listenable(),
-      builder: (context, Box db, _) {
-        final isDark = db.get("darkMode", defaultValue: false) as bool;
-        return CupertinoApp(
-          theme: CupertinoThemeData(
-            brightness: isDark ? Brightness.dark : Brightness.light,
-          ),
-          debugShowCheckedModeBanner: false,
-          home: db.get("username") != null
-              ? const LoginPage()
-              : const SignupPage(),
-        );
-      },
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(appSettingsProvider);
+    return CupertinoApp(
+      theme: CupertinoThemeData(
+        brightness: settings.darkMode ? Brightness.dark : Brightness.light,
+      ),
+      debugShowCheckedModeBanner: false,
+      home: settings.hasAccount ? const LoginPage() : const SignupPage(),
     );
   }
 }

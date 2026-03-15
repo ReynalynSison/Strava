@@ -1,11 +1,13 @@
 import 'dart:math';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/app_providers.dart';
 import '../utils/formatters.dart';
 
 /// Strava-style animated route widget.
 /// The polyline draws itself progressively over [duration].
 /// Tap anywhere to replay. Stats fade in once the animation completes.
-class AnimatedRouteWidget extends StatefulWidget {
+class AnimatedRouteWidget extends ConsumerStatefulWidget {
   final List<Map<String, double>> coordinates;
   final double distance;
   final int durationSeconds;
@@ -31,10 +33,10 @@ class AnimatedRouteWidget extends StatefulWidget {
   });
 
   @override
-  State<AnimatedRouteWidget> createState() => _AnimatedRouteWidgetState();
+  ConsumerState<AnimatedRouteWidget> createState() => _AnimatedRouteWidgetState();
 }
 
-class _AnimatedRouteWidgetState extends State<AnimatedRouteWidget>
+class _AnimatedRouteWidgetState extends ConsumerState<AnimatedRouteWidget>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   late final Animation<double> _routeProgress;
@@ -83,6 +85,7 @@ class _AnimatedRouteWidgetState extends State<AnimatedRouteWidget>
 
   @override
   Widget build(BuildContext context) {
+    final useMetric = ref.watch(appSettingsProvider).useMetric;
     return GestureDetector(
       onTap: _replay,
       child: Container(
@@ -119,7 +122,7 @@ class _AnimatedRouteWidgetState extends State<AnimatedRouteWidget>
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        formatDistance(widget.distance),
+                        formatDistance(widget.distance, useMetric: useMetric),
                         style: const TextStyle(
                           fontSize: 42,
                           fontWeight: FontWeight.w800,
@@ -138,7 +141,7 @@ class _AnimatedRouteWidgetState extends State<AnimatedRouteWidget>
                           const SizedBox(width: 8),
                           _StatBadge(
                             icon: CupertinoIcons.speedometer,
-                            value: formatPace(widget.pace),
+                            value: formatPace(widget.pace, useMetric: useMetric),
                           ),
                         ],
                       ),

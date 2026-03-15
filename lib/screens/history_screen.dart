@@ -1,64 +1,47 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/activity_model.dart';
+import '../providers/app_providers.dart';
 import '../services/demo_service.dart';
-import '../services/storage_service.dart';
 import '../screens/activity_summary_screen.dart';
 import '../widgets/activity_card_widget.dart';
 
-class HistoryScreen extends StatefulWidget {
+final _historySeedingProvider = StateProvider.autoDispose<bool>((ref) => false);
+
+class HistoryScreen extends ConsumerWidget {
   final VoidCallback? onGoToRecord;
 
   const HistoryScreen({super.key, this.onGoToRecord});
 
-  @override
-  State<HistoryScreen> createState() => _HistoryScreenState();
-}
-
-class _HistoryScreenState extends State<HistoryScreen> {
-  final StorageService _storage = StorageService();
-  final DemoService _demo = DemoService();
-  List<ActivityModel> _activities = [];
-  bool _isLoading = true;
-  bool _isSeeding = false;
-
-  // ─── Lifecycle ────────────────────────────────────────────────────────────
-
-  @override
-  void initState() {
-    super.initState();
-    _loadActivities();
-  }
-
-  // ─── Data ─────────────────────────────────────────────────────────────────
-
-  Future<void> _loadActivities() async {
-    final activities = await _storage.loadAllActivities();
-    if (!mounted) return;
-    setState(() {
-      _activities = activities;
-      _isLoading = false;
-    });
-  }
-
   // ─── Demo Seeder ──────────────────────────────────────────────────────────
 
-  Future<void> _seedDemo() async {
-    setState(() => _isSeeding = true);
-    await _demo.seedDemoRun();
-    await _loadActivities();
-    if (!mounted) return;
-    setState(() => _isSeeding = false);
+  Future<void> _seedDemo(BuildContext context, WidgetRef ref) async {
+    ref.read(_historySeedingProvider.notifier).state = true;
+    try {
+      await DemoService().seedDemoRun();
+      if (!context.mounted) return;
+      await ref.read(activityProvider.notifier).loadActivities();
+    } finally {
+      if (context.mounted) {
+        ref.read(_historySeedingProvider.notifier).state = false;
+      }
+    }
   }
 
-  Future<void> _seedStationary() async {
-    setState(() => _isSeeding = true);
-    await _demo.seedStationaryDemo();
-    await _loadActivities();
-    if (!mounted) return;
-    setState(() => _isSeeding = false);
+  Future<void> _seedStationary(BuildContext context, WidgetRef ref) async {
+    ref.read(_historySeedingProvider.notifier).state = true;
+    try {
+      await DemoService().seedStationaryDemo();
+      if (!context.mounted) return;
+      await ref.read(activityProvider.notifier).loadActivities();
+    } finally {
+      if (context.mounted) {
+        ref.read(_historySeedingProvider.notifier).state = false;
+      }
+    }
   }
 
-  void _showDemoSheet() {
+  void _showDemoSheet(BuildContext context, WidgetRef ref) {
     showCupertinoModalPopup<void>(
       context: context,
       builder: (_) => CupertinoActionSheet(
@@ -69,14 +52,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
           CupertinoActionSheetAction(
             onPressed: () {
               Navigator.pop(context);
-              _seedDemo();
+              _seedDemo(context, ref);
             },
             child: const Text('🏃 Demo Run (~2.1 km Lisbon loop)'),
           ),
           CupertinoActionSheetAction(
             onPressed: () {
               Navigator.pop(context);
-              _seedStationary();
+              _seedStationary(context, ref);
             },
             child: const Text('📍 Stationary Demo (0 m — single dot test)'),
           ),
@@ -92,7 +75,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   // ─── Delete ───────────────────────────────────────────────────────────────
 
-  void _confirmDelete(ActivityModel activity) {
+  void _confirmDelete(BuildContext context, WidgetRef ref, ActivityModel activity) {
     showCupertinoDialog(
       context: context,
       builder: (_) => CupertinoAlertDialog(
@@ -104,9 +87,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
             child: const Text('Delete'),
             onPressed: () async {
               Navigator.pop(context);
-              await _storage.deleteActivity(activity.id);
-              if (!mounted) return;
-              setState(() => _activities.remove(activity));
+              await ref.read(activityProvider.notifier).deleteActivity(activity.id);
             },
           ),
           CupertinoDialogAction(
@@ -122,14 +103,17 @@ class _HistoryScreenState extends State<HistoryScreen> {
   // ─── Build ────────────────────────────────────────────────────────────────
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final activityState = ref.watch(activityProvider);
+    final isSeeding = ref.watch(_historySeedingProvider);
+    final activities = activityState.activities;
     return CupertinoPageScaffold(
       navigationBar: CupertinoNavigationBar(
         middle: const Text('History'),
-        trailing: _isSeeding
+        trailing: isSeeding
             ? const CupertinoActivityIndicator()
             : GestureDetector(
-                onTap: _showDemoSheet,
+                onTap: () => _showDemoSheet(context, ref),
                 child: const Icon(
                   CupertinoIcons.wand_stars,
                   size: 22,
@@ -137,11 +121,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 ),
               ),
       ),
-      child: _isLoading
+      child: activityState.isLoading
           ? const Center(child: CupertinoActivityIndicator(radius: 16))
-          : _activities.isEmpty
+          : activities.isEmpty
               ? _buildEmptyState()
-              : _buildList(),
+              : _buildList(context, ref, activities),
     );
   }
 
@@ -179,7 +163,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
             const SizedBox(height: 28),
             CupertinoButton.filled(
               borderRadius: BorderRadius.circular(12),
-              onPressed: widget.onGoToRecord,
+              onPressed: onGoToRecord,
               child: const Text('Record Your First Run'),
             ),
           ],
@@ -190,12 +174,16 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   // ─── List ─────────────────────────────────────────────────────────────────
 
-  Widget _buildList() {
+  Widget _buildList(
+    BuildContext context,
+    WidgetRef ref,
+    List<ActivityModel> activities,
+  ) {
     return CustomScrollView(
       slivers: [
         // Pull-to-refresh
         CupertinoSliverRefreshControl(
-          onRefresh: _loadActivities,
+          onRefresh: () => ref.read(activityProvider.notifier).loadActivities(),
         ),
 
         // Total count header
@@ -203,7 +191,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
             child: Text(
-              '${_activities.length} ${_activities.length == 1 ? 'run' : 'runs'}',
+              '${activities.length} ${activities.length == 1 ? 'run' : 'runs'}',
               style: const TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
@@ -217,7 +205,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         SliverList(
           delegate: SliverChildBuilderDelegate(
             (context, index) {
-              final activity = _activities[index];
+              final activity = activities[index];
               return ActivityCardWidget(
                 activity: activity,
                 onTap: () {
@@ -229,10 +217,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     ),
                   );
                 },
-                onDelete: () => _confirmDelete(activity),
+                onDelete: () => _confirmDelete(context, ref, activity),
               );
             },
-            childCount: _activities.length,
+            childCount: activities.length,
           ),
         ),
 
