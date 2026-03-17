@@ -1,8 +1,8 @@
-import 'dart:ui' as ui;
 import 'dart:math' as math;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import '../utils/smoothing_utils.dart';
 
 /// Reusable map widget that renders a recorded route using CartoDB tiles.
 ///
@@ -258,7 +258,10 @@ class _RouteMapWidgetState extends State<RouteMapWidget>
               Positioned.fill(
                 child: IgnorePointer(
                   child: CustomPaint(
-                    painter: _SingleDotPainter(),
+                    painter: _SingleDotPainter(
+                      point: points.first,
+                      mapController: _mapController,
+                    ),
                   ),
                 ),
               ),
@@ -339,14 +342,8 @@ class _RouteOverlayPainter extends CustomPainter {
     final count = (points.length * progress).ceil().clamp(2, points.length);
     final visible = points.sublist(0, count);
 
-    // ui.Path to avoid collision with latlong2's Path<T>
-    final path = ui.Path();
-    final first = _project(visible.first);
-    path.moveTo(first.dx, first.dy);
-    for (final p in visible.skip(1)) {
-      final o = _project(p);
-      path.lineTo(o.dx, o.dy);
-    }
+    final screenPoints = visible.map(_project).toList(growable: false);
+    final path = buildSmoothPath(screenPoints);
 
     // Glow
     canvas.drawPath(path, Paint()
@@ -392,13 +389,26 @@ class _RouteOverlayPainter extends CustomPainter {
 // ── Single Dot Painter ────────────────────────────────────────────────────────
 
 class _SingleDotPainter extends CustomPainter {
+  final LatLng point;
+  final MapController mapController;
+
+  const _SingleDotPainter({
+    required this.point,
+    required this.mapController,
+  });
+
   @override
   void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
+    // Project the LatLng point to screen coordinates
+    final screenPoint = mapController.camera.latLngToScreenPoint(point);
+    final center = Offset(screenPoint.x, screenPoint.y);
+    
+    // Draw the orange dot at the actual map location
     canvas.drawCircle(center, 9, Paint()..color = CupertinoColors.systemOrange..style = PaintingStyle.fill);
     canvas.drawCircle(center, 9, Paint()..color = CupertinoColors.white..style = PaintingStyle.stroke..strokeWidth = 2.5);
   }
 
   @override
-  bool shouldRepaint(_SingleDotPainter old) => false;
+  bool shouldRepaint(_SingleDotPainter old) =>
+      old.point != point || old.mapController != mapController;
 }

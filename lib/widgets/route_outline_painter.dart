@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:flutter/cupertino.dart';
+import '../utils/smoothing_utils.dart';
 
 /// Draws the GPS route as an orange outline shape — like Strava activity art.
 /// Scales and centres the route path inside the available [Size].
@@ -75,13 +76,10 @@ class RouteOutlinePainter extends CustomPainter {
       ..strokeJoin = StrokeJoin.round
       ..style = PaintingStyle.stroke;
 
-    final path = Path();
-    final first = toOffset(coordinates.first['lat']!, coordinates.first['lng']!);
-    path.moveTo(first.dx, first.dy);
-    for (final c in coordinates.skip(1)) {
-      final o = toOffset(c['lat']!, c['lng']!);
-      path.lineTo(o.dx, o.dy);
-    }
+    final points = coordinates
+        .map((c) => toOffset(c['lat']!, c['lng']!))
+        .toList(growable: false);
+    final path = buildSmoothPath(points);
 
     canvas.drawPath(path, glowPaint);
     canvas.drawPath(path, routePaint);
@@ -124,4 +122,3 @@ class RouteOutlineWidget extends StatelessWidget {
     );
   }
 }
-

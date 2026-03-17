@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/activity_model.dart';
 import '../providers/app_providers.dart';
 import '../utils/formatters.dart';
+import '../utils/smoothing_utils.dart';
 
 /// A transparent-background sticker widget that draws the route polyline
 /// via [CustomPaint] and overlays distance + pace in white text.
@@ -128,16 +129,11 @@ class _RoutePainter extends CustomPainter {
       ..strokeJoin = StrokeJoin.round
       ..style = PaintingStyle.stroke;
 
-    final path = Path();
     final first = coordinates.first;
-    path.moveTo(
-      toOffset(first['lat']!, first['lng']!).dx,
-      toOffset(first['lat']!, first['lng']!).dy,
-    );
-    for (final c in coordinates.skip(1)) {
-      final o = toOffset(c['lat']!, c['lng']!);
-      path.lineTo(o.dx, o.dy);
-    }
+    final points = coordinates
+        .map((c) => toOffset(c['lat']!, c['lng']!))
+        .toList(growable: false);
+    final path = buildSmoothPath(points);
 
     canvas.drawPath(path, glowPaint);
     canvas.drawPath(path, routePaint);
@@ -207,4 +203,3 @@ class _ShadowText extends StatelessWidget {
     );
   }
 }
-

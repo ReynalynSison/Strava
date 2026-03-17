@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:geolocator/geolocator.dart';
 
 import '../models/activity_model.dart';
+import '../utils/gps_filtering.dart';
 import 'location_service.dart';
 
 /// Manages the state of a single run tracking session.
@@ -11,6 +12,9 @@ import 'location_service.dart';
 class TrackingService {
   TrackingService({LocationService? locationService})
       : _locationService = locationService ?? LocationService();
+
+  static const double _minPointDistanceMeters = 5.0;
+  static const bool _enableMovingAverageWindow = false;
 
   // ─── State ────────────────────────────────────────────────────────────────
 
@@ -178,12 +182,17 @@ class TrackingService {
     // the UI shows --'--" instead of an absurd pace like 76'47"/km.
     final pace = distanceMeters >= 100 ? currentPaceMinPerKm : 0.0;
 
+    final outputCoordinates = applyMovingAverageWindow(
+      routeCoordinates,
+      enabled: _enableMovingAverageWindow,
+    );
+
     return ActivityModel(
       distance: distanceMeters,
       durationSeconds: durationSecs,
       pace: pace,
       date: DateTime.now(),
-      routeCoordinates: List<Map<String, double>>.from(routeCoordinates),
+      routeCoordinates: List<Map<String, double>>.from(outputCoordinates),
     );
   }
 
@@ -191,6 +200,18 @@ class TrackingService {
   /// Only adds if not paused and tracking is active.
   void addCoordinate(double lat, double lng) {
     if (!_isTracking || _isPaused) return;
+
+    if (routeCoordinates.isNotEmpty) {
+      final last = routeCoordinates.last;
+      final distance = Geolocator.distanceBetween(
+        last['lat']!,
+        last['lng']!,
+        lat,
+        lng,
+      );
+      if (distance < _minPointDistanceMeters) return;
+    }
+
     routeCoordinates.add({'lat': lat, 'lng': lng});
   }
 

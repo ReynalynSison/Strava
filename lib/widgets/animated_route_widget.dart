@@ -3,6 +3,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/app_providers.dart';
 import '../utils/formatters.dart';
+import '../utils/smoothing_utils.dart';
 
 /// Strava-style animated route widget.
 /// The polyline draws itself progressively over [duration].
@@ -246,14 +247,10 @@ class _AnimatedRoutePainter extends CustomPainter {
     final count = (total * progress).ceil().clamp(2, total);
     final visible = coordinates.sublist(0, count);
 
-    // Build path
-    final path = Path();
-    final firstOff = toOffset(visible.first['lat']!, visible.first['lng']!);
-    path.moveTo(firstOff.dx, firstOff.dy);
-    for (final c in visible.skip(1)) {
-      final o = toOffset(c['lat']!, c['lng']!);
-      path.lineTo(o.dx, o.dy);
-    }
+    final points = visible
+        .map((c) => toOffset(c['lat']!, c['lng']!))
+        .toList(growable: false);
+    final path = buildSmoothPath(points);
 
     // Glow
     canvas.drawPath(path, Paint()
