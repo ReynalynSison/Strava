@@ -44,7 +44,7 @@ class LocationService {
     return Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.bestForNavigation,
-        distanceFilter: 2, // Update every 2 meters to reduce GPS jitter
+        distanceFilter: 1, // Update every 2 meters to reduce GPS jitter
       ),
     ).where((pos) => pos.accuracy <= 25.0); // Accept up to 25m accuracy, stricter for stationary detection
   }

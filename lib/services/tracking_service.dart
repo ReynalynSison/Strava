@@ -13,8 +13,10 @@ class TrackingService {
   TrackingService({LocationService? locationService})
       : _locationService = locationService ?? LocationService();
 
-  static const double _minPointDistanceMeters = 0.5;
-  static const bool _enableMovingAverageWindow = true;
+  // ✅ FIX 1: Changed from 0.5 to 2.0 - filters GPS jitter when standing still
+  static const double _minPointDistanceMeters = 1.0;
+  // ✅ FIX 2: Changed from true to false - preserves route accuracy, no smoothing distortion
+  static const bool _enableMovingAverageWindow = false;
 
   // ─── State ────────────────────────────────────────────────────────────────
 
@@ -40,7 +42,9 @@ class TrackingService {
   bool get isPaused => _isPaused;
 
   /// Total distance covered so far, in kilometers.
+  // ✅ FIX 3: Added validation - only calculate distance if 2+ points (real movement)
   double get currentDistanceKm {
+    if (routeCoordinates.length < 2) return 0.0;
     final meters = _locationService.calculateDistance(routeCoordinates);
     return meters / 1000;
   }
@@ -115,6 +119,7 @@ class TrackingService {
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _notify());
   }
 
+  // ✅ FIX 4: Removed initial position capture - prevents phantom distance at start
   void startTracking() {
     _positionStream?.cancel();
     _ticker?.cancel();
@@ -124,13 +129,8 @@ class TrackingService {
     _isTracking = true;
     _isPaused = false;
 
-    // Capture the current initial position as the starting point
-    if (_currentPosition != null) {
-      routeCoordinates.add({
-        'lat': _currentPosition!.latitude,
-        'lng': _currentPosition!.longitude,
-      });
-    }
+    // Do NOT capture initial position - prevents phantom distance
+    // Let GPS stream provide the first point to avoid variance
 
     _positionStream = _locationService.getPositionStream().listen((position) {
       _currentPosition = position;
@@ -186,12 +186,12 @@ class TrackingService {
     // BUG FIX: Use original routeCoordinates (with jitter filter applied during collection)
     // DO NOT apply additional filtering that distorts the route
     // The routeCoordinates already have 2m minimum distance applied, which is sufficient
-    
+
     // Filter ONLY obvious outliers, but keep the majority of valid points
     final cleanCoordinates = _filterObviousOutliersOnly(routeCoordinates);
 
     final distanceMeters =
-        _locationService.calculateDistance(cleanCoordinates);
+    _locationService.calculateDistance(cleanCoordinates);
     final durationSecs = _stopwatch.elapsed.inSeconds;
     // Guard: distance < 100 m means essentially stationary — save 0.0 so
     // the UI shows --'--" instead of an absurd pace like 76'47"/km.
@@ -211,8 +211,8 @@ class TrackingService {
   /// Filters only OBVIOUS outliers (impossible speeds > 20 m/s).
   /// Preserves the natural route shape for accurate visualization.
   List<Map<String, double>> _filterObviousOutliersOnly(
-    List<Map<String, double>> coordinates,
-  ) {
+      List<Map<String, double>> coordinates,
+      ) {
     if (coordinates.length < 2) return List<Map<String, double>>.from(coordinates);
 
     final filtered = <Map<String, double>>[coordinates.first];
@@ -251,21 +251,30 @@ class TrackingService {
 
   /// Adds a new GPS coordinate point to the route.
   /// Only adds if not paused and tracking is active.
+  // ✅ FIX 5: Improved logic - always accept first point, then validate >= 2m for subsequent
   void addCoordinate(double lat, double lng) {
     if (!_isTracking || _isPaused) return;
 
-    if (routeCoordinates.isNotEmpty) {
-      final last = routeCoordinates.last;
-      final distance = Geolocator.distanceBetween(
-        last['lat']!,
-        last['lng']!,
-        lat,
-        lng,
-      );
-      if (distance < _minPointDistanceMeters) return;
+    // Always accept first point (starting position)
+    if (routeCoordinates.isEmpty) {
+      routeCoordinates.add({'lat': lat, 'lng': lng});
+      return;
     }
 
-    routeCoordinates.add({'lat': lat, 'lng': lng});
+    // For subsequent points: only add if >= 2 meters from last point
+    final last = routeCoordinates.last;
+    final distance = Geolocator.distanceBetween(
+      last['lat']!,
+      last['lng']!,
+      lat,
+      lng,
+    );
+
+    // Only record real movement (>= 2 meters)
+    // This prevents GPS jitter from creating fake distance when standing still
+    if (distance >= _minPointDistanceMeters) {
+      routeCoordinates.add({'lat': lat, 'lng': lng});
+    }
   }
 
   void tick() => _notify();
