@@ -183,28 +183,70 @@ class TrackingService {
     _isTracking = false;
     _isPaused = false;
 
-    // First, filter out GPS outliers/noise that would create unrealistic jumps
-    final filteredCoordinates = filterGPSOutliers(routeCoordinates);
+    // BUG FIX: Use original routeCoordinates (with jitter filter applied during collection)
+    // DO NOT apply additional filtering that distorts the route
+    // The routeCoordinates already have 2m minimum distance applied, which is sufficient
+    
+    // Filter ONLY obvious outliers, but keep the majority of valid points
+    final cleanCoordinates = _filterObviousOutliersOnly(routeCoordinates);
 
     final distanceMeters =
-        _locationService.calculateDistance(filteredCoordinates);
+        _locationService.calculateDistance(cleanCoordinates);
     final durationSecs = _stopwatch.elapsed.inSeconds;
     // Guard: distance < 100 m means essentially stationary — save 0.0 so
     // the UI shows --'--" instead of an absurd pace like 76'47"/km.
     final pace = distanceMeters >= 100 ? currentPaceMinPerKm : 0.0;
 
-    final outputCoordinates = applyMovingAverageWindow(
-      filteredCoordinates,
-      enabled: _enableMovingAverageWindow,
-    );
-
+    // IMPORTANT: Do NOT apply moving average smoothing
+    // Return raw coordinates to preserve accurate route visualization
     return ActivityModel(
       distance: distanceMeters,
       durationSeconds: durationSecs,
       pace: pace,
       date: DateTime.now(),
-      routeCoordinates: List<Map<String, double>>.from(outputCoordinates),
+      routeCoordinates: List<Map<String, double>>.from(cleanCoordinates),
     );
+  }
+
+  /// Filters only OBVIOUS outliers (impossible speeds > 20 m/s).
+  /// Preserves the natural route shape for accurate visualization.
+  List<Map<String, double>> _filterObviousOutliersOnly(
+    List<Map<String, double>> coordinates,
+  ) {
+    if (coordinates.length < 2) return List<Map<String, double>>.from(coordinates);
+
+    final filtered = <Map<String, double>>[coordinates.first];
+
+    for (int i = 1; i < coordinates.length; i++) {
+      final current = coordinates[i];
+      final last = filtered.last;
+
+      final distance = Geolocator.distanceBetween(
+        last['lat']!,
+        last['lng']!,
+        current['lat']!,
+        current['lng']!,
+      );
+
+      // Only reject completely impossible jumps (> 20 m/s)
+      // Keep normal variations to preserve route accuracy
+      final impliedSpeedMps = distance / 1.0; // ~1 second between updates
+      if (impliedSpeedMps > 20.0) {
+        continue; // Skip obvious impossible jump
+      }
+
+      filtered.add(current);
+    }
+
+    if (filtered.isEmpty) {
+      return [coordinates.first, coordinates.last];
+    }
+
+    if (filtered.last != coordinates.last) {
+      filtered.add(coordinates.last);
+    }
+
+    return filtered;
   }
 
   /// Adds a new GPS coordinate point to the route.
