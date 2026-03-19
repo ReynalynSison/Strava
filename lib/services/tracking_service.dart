@@ -13,8 +13,8 @@ class TrackingService {
   TrackingService({LocationService? locationService})
       : _locationService = locationService ?? LocationService();
 
-  static const double _minPointDistanceMeters = 5.0;
-  static const bool _enableMovingAverageWindow = false;
+  static const double _minPointDistanceMeters = 0.5;
+  static const bool _enableMovingAverageWindow = true;
 
   // ─── State ────────────────────────────────────────────────────────────────
 
@@ -124,6 +124,14 @@ class TrackingService {
     _isTracking = true;
     _isPaused = false;
 
+    // Capture the current initial position as the starting point
+    if (_currentPosition != null) {
+      routeCoordinates.add({
+        'lat': _currentPosition!.latitude,
+        'lng': _currentPosition!.longitude,
+      });
+    }
+
     _positionStream = _locationService.getPositionStream().listen((position) {
       _currentPosition = position;
       addCoordinate(position.latitude, position.longitude);
@@ -175,15 +183,18 @@ class TrackingService {
     _isTracking = false;
     _isPaused = false;
 
+    // First, filter out GPS outliers/noise that would create unrealistic jumps
+    final filteredCoordinates = filterGPSOutliers(routeCoordinates);
+
     final distanceMeters =
-        _locationService.calculateDistance(routeCoordinates);
+        _locationService.calculateDistance(filteredCoordinates);
     final durationSecs = _stopwatch.elapsed.inSeconds;
     // Guard: distance < 100 m means essentially stationary — save 0.0 so
     // the UI shows --'--" instead of an absurd pace like 76'47"/km.
     final pace = distanceMeters >= 100 ? currentPaceMinPerKm : 0.0;
 
     final outputCoordinates = applyMovingAverageWindow(
-      routeCoordinates,
+      filteredCoordinates,
       enabled: _enableMovingAverageWindow,
     );
 

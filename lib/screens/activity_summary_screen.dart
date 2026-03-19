@@ -8,10 +8,13 @@ import '../widgets/activity_stats_widget.dart';
 import '../widgets/route_map_widget.dart';
 import '../widgets/shareable_card_widget.dart';
 
-final _summarySharingProvider =
-    StateProvider.autoDispose.family<bool, String>((ref, _) => false);
+// --- Theme Constants (Blue Theme) ---
+const Color themeBlue = CupertinoColors.activeBlue;
+const Color themeTeal = Color(0xFF64FFDA);
 
-/// Full Activity Summary screen — shown after a run is saved.
+final _summarySharingProvider =
+StateProvider.autoDispose.family<bool, String>((ref, _) => false);
+
 class ActivitySummaryScreen extends ConsumerStatefulWidget {
   final ActivityModel activity;
 
@@ -22,7 +25,6 @@ class ActivitySummaryScreen extends ConsumerStatefulWidget {
 }
 
 class _ActivitySummaryScreenState extends ConsumerState<ActivitySummaryScreen> {
-  // Key attached to the RepaintBoundary wrapping ShareableCardWidget
   final GlobalKey _shareKey = GlobalKey();
 
   Future<void> _share() async {
@@ -35,7 +37,7 @@ class _ActivitySummaryScreenState extends ConsumerState<ActivitySummaryScreen> {
       await ShareService().shareActivityImage(
         _shareKey,
         text:
-            'Just ran ${formatDistance(widget.activity.distance, useMetric: useMetric)} in ${formatDuration(widget.activity.durationSeconds)} 🏃 #RunTracker',
+        'Just ran ${formatDistance(widget.activity.distance, useMetric: useMetric)} in ${formatDuration(widget.activity.durationSeconds)} 🏃 #RunTracker',
       );
     } catch (e) {
       if (!mounted) return;
@@ -63,101 +65,170 @@ class _ActivitySummaryScreenState extends ConsumerState<ActivitySummaryScreen> {
   @override
   Widget build(BuildContext context) {
     final isSharing = ref.watch(_summarySharingProvider(widget.activity.id));
+    final isDark = CupertinoTheme.brightnessOf(context) == Brightness.dark;
+
     return CupertinoPageScaffold(
-      navigationBar: const CupertinoNavigationBar(
-        middle: Text('Summary'),
+      backgroundColor: CupertinoColors.systemGroupedBackground,
+      navigationBar: CupertinoNavigationBar(
+        backgroundColor: CupertinoColors.systemGroupedBackground.withOpacity(0.8),
+        border: null,
+        middle: const Text('Run Summary', style: TextStyle(fontWeight: FontWeight.w800)),
+        trailing: CupertinoButton(
+          padding: EdgeInsets.zero,
+          child: const Text('Done', style: TextStyle(fontWeight: FontWeight.w600, color: themeBlue)),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
       ),
       child: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // ── Date ────────────────────────────────────────────────
-              Text(
-                formatDate(widget.activity.date),
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 15,
-                  color: CupertinoColors.secondaryLabel,
+              // ── Modern Header ──
+              Center(
+                child: Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: themeBlue.withOpacity(0.1),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: themeBlue.withOpacity(0.2), width: 2),
+                      ),
+                      child: const Icon(CupertinoIcons.checkmark_seal_fill, color: themeBlue, size: 32),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Activities Completed!',
+                      style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, letterSpacing: -0.5),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      formatDate(widget.activity.date).toUpperCase(),
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        color: CupertinoColors.secondaryLabel,
+                        letterSpacing: 1.5,
+                      ),
+                    ),
+                  ],
                 ),
               ),
 
-              const SizedBox(height: 20),
+              const SizedBox(height: 32),
 
-              // ── Stats Card ──────────────────────────────────────────
-              ActivityStatsWidget(activity: widget.activity),
-
-              const SizedBox(height: 16),
-
-              // ── Route Map (single renderer + built-in animation) ────
-              RouteMapWidget(
-                coordinates: widget.activity.routeCoordinates,
-                interactive: true,
-                height: 280,
-                animate: true,
-                showEndMarkers: true,
+              // ── Stats Widget (With Blue Highlight) ──
+              Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: themeBlue.withOpacity(0.08),
+                      blurRadius: 20,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(24),
+                  child: ActivityStatsWidget(activity: widget.activity),
+                ),
               ),
 
               const SizedBox(height: 24),
 
-              // ── Shareable Card Preview ──────────────────────────────
-              const Text(
-                'SHARE PREVIEW',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: CupertinoColors.secondaryLabel,
-                  letterSpacing: 0.5,
+              // ── Route Map ──
+              _buildSectionLabel('LIVE ROUTE'),
+              const SizedBox(height: 12),
+              Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(color: CupertinoColors.black.withOpacity(0.06), blurRadius: 15, offset: const Offset(0, 8)),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(24),
+                  child: RouteMapWidget(
+                    coordinates: widget.activity.routeCoordinates,
+                    interactive: true,
+                    height: 260,
+                    animate: true,
+                    showEndMarkers: true,
+                  ),
                 ),
               ),
-              const SizedBox(height: 10),
+
+              const SizedBox(height: 32),
+
+              // ── Share Preview ──
+              _buildSectionLabel('SOCIAL PREVIEW'),
+              const SizedBox(height: 12),
               Center(
-                child: RepaintBoundary(
-                  key: _shareKey,
-                  child: ShareableCardWidget(activity: widget.activity),
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(22),
+                    boxShadow: [
+                      BoxShadow(
+                        color: CupertinoColors.black.withOpacity(isDark ? 0.35 : 0.12),
+                        blurRadius: 30,
+                        offset: const Offset(0, 15),
+                      ),
+                    ],
+                  ),
+                  child: RepaintBoundary(
+                    key: _shareKey,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(20),
+                      child: ShareableCardWidget(activity: widget.activity),
+                    ),
+                  ),
                 ),
               ),
 
-              const SizedBox(height: 28),
+              const SizedBox(height: 40),
 
-              // ── Share Button ────────────────────────────────────────
+              // ── Share Button ──
               CupertinoButton(
-                color: CupertinoColors.systemBlue,
-                borderRadius: BorderRadius.circular(12),
+                color: themeBlue,
+                borderRadius: BorderRadius.circular(18),
+                padding: const EdgeInsets.symmetric(vertical: 18),
                 onPressed: isSharing ? null : _share,
                 child: isSharing
-                    ? const CupertinoActivityIndicator()
+                    ? const CupertinoActivityIndicator(color: CupertinoColors.white)
                     : const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(CupertinoIcons.share,
-                              color: CupertinoColors.white),
-                          SizedBox(width: 8),
-                          Text(
-                            'Share',
-                            style: TextStyle(
-                              color: CupertinoColors.white,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-              ),
-
-              const SizedBox(height: 12),
-
-              // ── Done Button ─────────────────────────────────────────
-              CupertinoButton(
-                borderRadius: BorderRadius.circular(12),
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text(
-                  'Done',
-                  style: TextStyle(fontWeight: FontWeight.w500),
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(CupertinoIcons.share_up, color: CupertinoColors.white, size: 22),
+                    SizedBox(width: 12),
+                    Text(
+                      'Share to Socials',
+                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, letterSpacing: 0.3),
+                    ),
+                  ],
                 ),
               ),
+              const SizedBox(height: 60),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionLabel(String label) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4),
+      child: Text(
+        label,
+        style: const TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+          color: CupertinoColors.secondaryLabel,
+          letterSpacing: 1.5,
         ),
       ),
     );

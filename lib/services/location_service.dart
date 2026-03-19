@@ -38,14 +38,15 @@ class LocationService {
   }
 
   /// Returns a stream of position updates for real-time tracking.
-  /// Position updates every ~3 meters of movement for a smooth, accurate route line.
+  /// Position updates every 1 meter of movement for detailed and responsive tracking.
+  /// Accepts readings up to 30m accuracy for better coverage in weak signal areas.
   Stream<Position> getPositionStream() {
     return Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.bestForNavigation,
-        distanceFilter: 3, // Update every 3 meters for a detailed route
+        distanceFilter: 1, // Update every 1 meter for maximum detail
       ),
-    ).where((pos) => pos.accuracy <= 20.0); // Reject readings worse than 20 m accuracy
+    ).where((pos) => pos.accuracy <= 30.0); // Accept up to 30m accuracy for better movement detection
   }
 
   /// Calculates the total distance in meters from a list of GPS coordinates.
@@ -66,5 +67,3 @@ class LocationService {
     return totalDistance;
   }
 }
-
-

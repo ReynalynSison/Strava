@@ -248,7 +248,7 @@ class _RecordScreenState extends ConsumerState<RecordScreen> {
                       ),
                       CupertinoSwitch(
                         value: postToFeed,
-                        activeTrackColor: const Color(0xFFFC4C02),
+                        activeTrackColor: const Color(0xFF2424EA),
                         onChanged: (v) => setSheetState(() => postToFeed = v),
                       ),
                     ],
@@ -271,7 +271,7 @@ class _RecordScreenState extends ConsumerState<RecordScreen> {
                   const SizedBox(height: 22),
                   // ── Confirm Button ────────────────────────────────
                   CupertinoButton(
-                    color: const Color(0xFFFC4C02),
+                    color: const Color(0xFF2424EA),
                     borderRadius: BorderRadius.circular(12),
                     onPressed: () => Navigator.of(ctx).pop(),
                     child: Text(

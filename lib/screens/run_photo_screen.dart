@@ -94,9 +94,9 @@ class _RunPhotoScreenState extends ConsumerState<RunPhotoScreen> {
               const SizedBox(height: 12),
               // ── App branding ─────────────────────────────────────
               const Text(
-                'STRAVA',
+                'STRIVO',
                 style: TextStyle(
-                  color: Color(0xFFFC4C02),
+                  color: Color(0xFF2424EA),
                   fontSize: 20,
                   fontWeight: FontWeight.w900,
                   letterSpacing: 4,
@@ -122,7 +122,7 @@ class _RunPhotoScreenState extends ConsumerState<RunPhotoScreen> {
           child: Column(
             children: [
               CupertinoButton(
-                color: const Color(0xFFFC4C02),
+                color: const Color(0xFF2424EA),
                 borderRadius: BorderRadius.circular(14),
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 onPressed: _openCamera,
@@ -253,9 +253,9 @@ class _RunPhotoScreenState extends ConsumerState<RunPhotoScreen> {
                     const SizedBox(height: 14),
                     // App branding
                     const Text(
-                      'STRAVA',
+                      'STRIVO',
                       style: TextStyle(
-                        color: Color(0xFFFC4C02),
+                        color: Color(0xFF2424EA),
                         fontSize: 22,
                         fontWeight: FontWeight.w900,
                         letterSpacing: 4,
@@ -316,7 +316,7 @@ class _RunPhotoScreenState extends ConsumerState<RunPhotoScreen> {
           right: 24,
           bottom: 48,
           child: CupertinoButton(
-            color: const Color(0xFFFC4C02),
+            color: const Color(0xFF2424EA),
             borderRadius: BorderRadius.circular(14),
             padding: const EdgeInsets.symmetric(vertical: 16),
             onPressed: _usePhoto,
@@ -392,5 +392,3 @@ class _OverlayStat extends StatelessWidget {
     );
   }
 }
-
-
