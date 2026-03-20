@@ -18,8 +18,10 @@ class MotivationSummaryWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = CupertinoTheme.brightnessOf(context) == Brightness.dark;
-    final cardColor =
-        isDark ? const Color(0xFF1C1C1E) : CupertinoColors.systemBackground;
+    final titleColor =
+        CupertinoColors.label.resolveFrom(context).withValues(alpha: 0.8);
+    final cardColor = CupertinoColors.secondarySystemGroupedBackground
+        .resolveFrom(context);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
@@ -28,10 +30,10 @@ class MotivationSummaryWidget extends StatelessWidget {
         children: [
           Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
-              color: CupertinoColors.secondaryLabel,
+              color: titleColor,
               letterSpacing: 0.5,
             ),
           ),
@@ -114,6 +116,9 @@ class _MotivationCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final subtitleColor =
+        CupertinoColors.label.resolveFrom(context).withValues(alpha: 0.7);
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
       decoration: BoxDecoration(
@@ -123,7 +128,7 @@ class _MotivationCard extends StatelessWidget {
           BoxShadow(
             color: isDark
                 ? CupertinoColors.black.withValues(alpha: 0.3)
-                : CupertinoColors.systemGrey5,
+                : CupertinoColors.systemGrey4,
             blurRadius: 6,
             offset: const Offset(0, 2),
           ),
@@ -138,10 +143,10 @@ class _MotivationCard extends StatelessWidget {
             label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w600,
-              color: CupertinoColors.secondaryLabel,
+              color: CupertinoColors.label.resolveFrom(context),
             ),
           ),
           const SizedBox(height: 6),
@@ -159,9 +164,9 @@ class _MotivationCard extends StatelessWidget {
             subtitle,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 11,
-              color: CupertinoColors.secondaryLabel,
+              color: subtitleColor,
             ),
           ),
         ],

@@ -1,6 +1,13 @@
+import 'dart:io' show Platform;
 import 'package:geolocator/geolocator.dart';
 
 /// Handles GPS location permissions and coordinate tracking.
+/// 
+/// Configuration:
+/// - distanceFilter=3m: Captures route bends more faithfully while reducing jitter
+/// - accuracy=bestForNavigation: Prefer high-quality fixes for workout tracking
+/// - Android 14: Uses required foreground service permissions via manifest
+/// - Stream-level accuracy gate = 50m to allow initial GPS lock (TrackingService revalidates at 30m)
 class LocationService {
   /// Requests location permission from the user.
   /// Returns true if permission is granted (always or whileInUse).
@@ -28,7 +35,9 @@ class LocationService {
   /// Gets the user's current GPS position.
   Future<Position> getCurrentLocation() async {
     return await Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.bestForNavigation,
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.bestForNavigation,
+      ),
     );
   }
 
@@ -38,15 +47,37 @@ class LocationService {
   }
 
   /// Returns a stream of position updates for real-time tracking.
-  /// Position updates every 2 meters of movement to filter GPS jitter.
-  /// Accepts readings up to 25m accuracy for good balance between responsiveness and noise filtering.
+  /// 
+  /// Configuration:
+  /// - distanceFilter=3m: Captures route bends more faithfully while reducing jitter
+  /// - accuracy=bestForNavigation: Prefer high-quality fixes for workout tracking
+  /// - Android 14: Uses required foreground service permissions via manifest
+  /// - Stream-level accuracy gate = 50m to allow initial GPS lock (TrackingService revalidates at 30m)
   Stream<Position> getPositionStream() {
-    return Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
+    final LocationSettings locationSettings;
+    if (Platform.isAndroid) {
+      locationSettings = AndroidSettings(
         accuracy: LocationAccuracy.bestForNavigation,
-        distanceFilter: 1, // Update every 2 meters to reduce GPS jitter
-      ),
-    ).where((pos) => pos.accuracy <= 25.0); // Accept up to 25m accuracy, stricter for stationary detection
+        distanceFilter: 3,
+        intervalDuration: const Duration(seconds: 1),
+      );
+    } else if (Platform.isIOS || Platform.isMacOS) {
+      locationSettings = AppleSettings(
+        accuracy: LocationAccuracy.bestForNavigation,
+        distanceFilter: 3,
+        pauseLocationUpdatesAutomatically: false,
+        allowBackgroundLocationUpdates: true,
+        activityType: ActivityType.fitness,
+      );
+    } else {
+      locationSettings = const LocationSettings(
+        accuracy: LocationAccuracy.bestForNavigation,
+        distanceFilter: 3,
+      );
+    }
+
+    return Geolocator.getPositionStream(locationSettings: locationSettings)
+        .where((pos) => pos.accuracy <= 50.0);
   }
 
   /// Calculates the total distance in meters from a list of GPS coordinates.

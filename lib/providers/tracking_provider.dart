@@ -64,6 +64,7 @@ class TrackingNotifier extends StateNotifier<TrackingState> {
   final RunNotificationService _notificationService;
   final Ref _ref;
   StreamSubscription<RunNotificationAction>? _notificationActionSub;
+  DateTime? _lastNotificationSync; // ✅ Bug 3 Part C: throttle notification updates
 
   TrackingNotifier(this._service, this._notificationService, this._ref)
       : super(const TrackingState.initial()) {
@@ -90,10 +91,13 @@ class TrackingNotifier extends StateNotifier<TrackingState> {
       return;
     }
     unawaited(_notificationService.initialize());
-    _syncNotificationFromState();
+    _syncNotificationFromState(force: true);
   }
 
   void _emit() {
+    final wasRunning = state.isRunning;
+    final wasPaused = state.isPaused;
+
     state = TrackingState(
       currentPosition: _service.currentPosition,
       isLoading: _service.isLoading,
@@ -106,7 +110,9 @@ class TrackingNotifier extends StateNotifier<TrackingState> {
       paceMinPerKm: _service.currentPaceMinPerKm,
     );
 
-    _syncNotificationFromState();
+    final runStateChanged =
+        wasRunning != state.isRunning || wasPaused != state.isPaused;
+    _syncNotificationFromState(force: runStateChanged);
   }
 
   void _handleNotificationAction(RunNotificationAction action) {
@@ -129,6 +135,7 @@ class TrackingNotifier extends StateNotifier<TrackingState> {
       }
       _debug('action => pauseRun()');
       pauseRun();
+      _syncNotificationFromState(force: true);
       return;
     }
 
@@ -139,13 +146,25 @@ class TrackingNotifier extends StateNotifier<TrackingState> {
       }
       _debug('action => resumeRun()');
       resumeRun();
+      _syncNotificationFromState(force: true);
       return;
     }
 
     _debug('ignored action: unsupported action type');
   }
 
-  void _syncNotificationFromState() {
+  void _syncNotificationFromState({bool force = false}) {
+    // ✅ Bug 3 Part C: Throttle notification sync to every 2 seconds
+    // This prevents notification churn from blocking the location update loop
+    final now = DateTime.now();
+    final lastSync = _lastNotificationSync;
+    if (!force &&
+        lastSync != null &&
+        now.difference(lastSync) < const Duration(seconds: 2)) {
+      return;
+    }
+    _lastNotificationSync = now;
+
     if (!_notificationsEnabled) {
       unawaited(_notificationService.cancel());
       return;
@@ -200,13 +219,18 @@ class TrackingNotifier extends StateNotifier<TrackingState> {
     return activity;
   }
 
-  void addCoordinate(double lat, double lng) {
-    _service.addCoordinate(lat, lng);
+  void addCoordinate(Position position) {
+    _service.addCoordinate(position);
     _emit();
   }
 
   void tick() {
     _service.tick();
+  }
+
+  void updatePreviewPosition(Position position) {
+    if (state.isRunning) return;
+    _service.updatePreviewPosition(position);
   }
 
   void clearRoute() {

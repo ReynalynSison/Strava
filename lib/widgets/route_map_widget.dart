@@ -145,7 +145,7 @@ class _RouteMapWidgetState extends State<RouteMapWidget>
         borderRadius: BorderRadius.circular(16),
         child: Container(
           height: widget.height,
-          color: isDark ? const Color(0xFF2C2C2E) : const Color(0xFFE5E5EA),
+          color: CupertinoColors.tertiarySystemFill.resolveFrom(context),
           child: Center(
             child: Column(
               mainAxisSize: MainAxisSize.min,

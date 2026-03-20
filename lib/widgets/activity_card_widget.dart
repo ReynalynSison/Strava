@@ -48,9 +48,8 @@ class ActivityCardWidget extends ConsumerWidget {
           onTap: onTap,
           child: Container(
             decoration: BoxDecoration(
-              color: CupertinoTheme.brightnessOf(context) == Brightness.dark
-                  ? const Color(0xFF1C1C1E)
-                  : CupertinoColors.white,
+              color: CupertinoColors.secondarySystemGroupedBackground
+                  .resolveFrom(context),
               borderRadius: BorderRadius.circular(16),
             ),
             clipBehavior: Clip.antiAlias,
@@ -74,9 +73,11 @@ class ActivityCardWidget extends ConsumerWidget {
                       // Date
                       Text(
                         formatDate(activity.date),
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 13,
-                          color: CupertinoColors.secondaryLabel,
+                          color: CupertinoColors.label
+                              .resolveFrom(context)
+                              .withValues(alpha: 0.82),
                         ),
                       ),
                       const SizedBox(height: 8),

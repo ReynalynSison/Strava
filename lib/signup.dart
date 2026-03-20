@@ -26,8 +26,13 @@ class _SignupPageState extends ConsumerState<SignupPage> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = CupertinoTheme.brightnessOf(context) == Brightness.dark;
+    final scaffoldBg = isDark
+        ? CupertinoColors.systemGroupedBackground.resolveFrom(context)
+        : ultraLightBlue;
+
     return CupertinoPageScaffold(
-      backgroundColor: ultraLightBlue,
+      backgroundColor: scaffoldBg,
       child: SingleChildScrollView(
         child: Column(
           children: [
@@ -47,7 +52,7 @@ class _SignupPageState extends ConsumerState<SignupPage> {
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: primaryBlue.withOpacity(0.3),
+                    color: primaryBlue.withValues(alpha: 0.3),
                     blurRadius: 20,
                     offset: const Offset(0, 10),
                   ),
@@ -68,7 +73,7 @@ class _SignupPageState extends ConsumerState<SignupPage> {
                           shape: BoxShape.circle,
                           boxShadow: [
                             BoxShadow(
-                              color: skyBlue.withOpacity(0.4),
+                              color: skyBlue.withValues(alpha: 0.4),
                               blurRadius: 40,
                               spreadRadius: 5,
                             ),
@@ -79,10 +84,10 @@ class _SignupPageState extends ConsumerState<SignupPage> {
                         height: 90,
                         width: 90,
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.15),
+                          color: Colors.white.withValues(alpha: 0.15),
                           shape: BoxShape.circle,
                           border: Border.all(
-                            color: Colors.white.withOpacity(0.2),
+                            color: Colors.white.withValues(alpha: 0.2),
                             width: 1.5,
                           ),
                         ),
@@ -130,7 +135,7 @@ class _SignupPageState extends ConsumerState<SignupPage> {
                     style: TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.w800,
-                      color: Color(0xFF001D39),
+                      color: CupertinoColors.label,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -138,7 +143,7 @@ class _SignupPageState extends ConsumerState<SignupPage> {
                     "Start your journey with us today.",
                     style: TextStyle(
                       fontSize: 14,
-                      color: deepNavy.withOpacity(0.5),
+                      color: CupertinoColors.secondaryLabel.resolveFrom(context),
                     ),
                   ),
                   const SizedBox(height: 35),
@@ -147,6 +152,7 @@ class _SignupPageState extends ConsumerState<SignupPage> {
                     controller: _username,
                     label: "USERNAME",
                     icon: CupertinoIcons.person_solid,
+                    isDark: isDark,
                   ),
                   const SizedBox(height: 20),
 
@@ -154,12 +160,13 @@ class _SignupPageState extends ConsumerState<SignupPage> {
                     controller: _password,
                     label: "PASSWORD",
                     icon: CupertinoIcons.lock_shield_fill,
+                    isDark: isDark,
                     obscure: hidePassword,
                     suffix: CupertinoButton(
                       padding: EdgeInsets.zero,
                       child: Icon(
                         hidePassword ? CupertinoIcons.eye : CupertinoIcons.eye_slash,
-                        color: primaryBlue.withOpacity(0.4),
+                        color: primaryBlue.withValues(alpha: 0.4),
                       ),
                       onPressed: () => setState(() => hidePassword = !hidePassword),
                     ),
@@ -178,7 +185,7 @@ class _SignupPageState extends ConsumerState<SignupPage> {
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: primaryBlue.withOpacity(0.3),
+                            color: primaryBlue.withValues(alpha: 0.3),
                             blurRadius: 15,
                             offset: const Offset(0, 8),
                           ),
@@ -228,6 +235,7 @@ class _SignupPageState extends ConsumerState<SignupPage> {
     required TextEditingController controller,
     required String label,
     required IconData icon,
+    required bool isDark,
     bool obscure = false,
     Widget? suffix,
   }) {
@@ -241,35 +249,59 @@ class _SignupPageState extends ConsumerState<SignupPage> {
             style: TextStyle(
               fontSize: 10,
               fontWeight: FontWeight.w800,
-              color: deepNavy.withOpacity(0.4),
+              color: isDark
+                  ? CupertinoColors.tertiaryLabel.resolveFrom(context)
+                  : deepNavy.withValues(alpha: 0.4),
               letterSpacing: 1.5,
             ),
           ),
         ),
         Container(
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: isDark
+                ? CupertinoColors.secondarySystemBackground.resolveFrom(context)
+                : CupertinoColors.white,
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
-                color: deepNavy.withOpacity(0.04),
+                color: (isDark ? CupertinoColors.black : deepNavy)
+                    .withValues(alpha: isDark ? 0.3 : 0.04),
                 blurRadius: 20,
-                offset: const Offset(0, 10),
+                offset: const Offset(0, 5),
               ),
             ],
           ),
           child: CupertinoTextField(
             controller: controller,
             placeholder: "Enter your ${label.toLowerCase()}",
-            placeholderStyle: TextStyle(color: deepNavy.withOpacity(0.2), fontSize: 14),
-            obscureText: obscure,
-            padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 20),
-            decoration: null,
-            prefix: Padding(
-              padding: const EdgeInsets.only(left: 20),
-              child: Icon(icon, color: primaryBlue, size: 18),
+            style: TextStyle(
+              fontSize: 16,
+              height: 1.0,
+              color: CupertinoColors.label.resolveFrom(context),
             ),
-            suffix: suffix,
+            placeholderStyle: TextStyle(
+              color: CupertinoColors.secondaryLabel
+                  .resolveFrom(context)
+                  .withValues(alpha: 0.75),
+              fontSize: 16,
+              height: 1.0,
+            ),
+            obscureText: obscure,
+            // Keep icon and text on the same visual baseline across auth fields.
+            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+            decoration: null,
+            prefix: SizedBox(
+              width: 52,
+              child: Center(
+                child: Icon(icon, color: isDark ? skyBlue : primaryBlue, size: 18),
+              ),
+            ),
+            suffix: suffix == null
+                ? null
+                : SizedBox(
+                    width: 52,
+                    child: Center(child: suffix),
+                  ),
           ),
         ),
       ],

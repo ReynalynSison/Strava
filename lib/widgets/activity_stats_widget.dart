@@ -4,8 +4,7 @@ import '../models/activity_model.dart';
 import '../providers/app_providers.dart';
 import '../utils/formatters.dart';
 
-/// Reusable 3-column stats row — Distance | Duration | Pace.
-/// Used in ActivitySummaryScreen, ActivityCardWidget, and HomeScreen.
+
 class ActivityStatsWidget extends ConsumerWidget {
   final ActivityModel activity;
 
@@ -16,9 +15,8 @@ class ActivityStatsWidget extends ConsumerWidget {
     final useMetric = ref.watch(appSettingsProvider).useMetric;
     return Container(
       decoration: BoxDecoration(
-        color: CupertinoTheme.brightnessOf(context) == Brightness.dark
-            ? const Color(0xFF1C1C1E)
-            : CupertinoColors.white,
+        color: CupertinoColors.secondarySystemGroupedBackground
+            .resolveFrom(context),
         borderRadius: BorderRadius.circular(16),
       ),
       padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
@@ -78,9 +76,11 @@ class _StatColumn extends StatelessWidget {
         const SizedBox(height: 3),
         Text(
           label,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 12,
-            color: CupertinoColors.secondaryLabel,
+            color: CupertinoColors.label
+                .resolveFrom(context)
+                .withValues(alpha: 0.78),
           ),
         ),
       ],

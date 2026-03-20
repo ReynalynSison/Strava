@@ -1,9 +1,9 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:geolocator/geolocator.dart';
 
 import '../models/activity_model.dart';
-import '../utils/gps_filtering.dart';
 import 'location_service.dart';
 
 /// Manages the state of a single run tracking session.
@@ -13,11 +13,13 @@ class TrackingService {
   TrackingService({LocationService? locationService})
       : _locationService = locationService ?? LocationService();
 
-  // ✅ FIX 1: Changed from 0.5 to 2.0 - filters GPS jitter when standing still
-  static const double _minPointDistanceMeters = 1.0;
-  // ✅ FIX 2: Changed from true to false - preserves route accuracy, no smoothing distortion
-  static const bool _enableMovingAverageWindow = false;
-
+  // Balanced defaults: preserve road shape while still rejecting noisy jumps.
+  static const double _maxAccuracyMeters = 30.0;
+  static const double _minPointDistanceMeters = 2.0;
+  static const double _maxSpeedMps = 12.0; // ~43 km/h, reasonable for running
+  static const double _stationarySpeedMps = 1.0;
+  // Do NOT use speedMps < 0.5 cutoff — it causes frozen markers (Bug 3)
+  
   // ─── State ────────────────────────────────────────────────────────────────
 
   final LocationService _locationService;
@@ -25,9 +27,12 @@ class TrackingService {
   final Stopwatch _stopwatch = Stopwatch();
   StreamSubscription<Position>? _positionStream;
   Timer? _ticker;
+  Timer? _streamWatchdog; // ✅ Bug 3 Part B: detects silent stream death
   void Function()? _onUpdate;
 
   Position? _currentPosition;
+  Position? _lastAcceptedRoutePosition; // Separate from currentPosition
+  DateTime? _lastUpdateTime; // Track for stream watchdog
   bool _isLoading = true;
   String? _errorMessage;
   bool _isPaused = false;
@@ -112,6 +117,14 @@ class TrackingService {
     await _locationService.openLocationSettings();
   }
 
+  /// Updates only the live marker position outside an active run.
+  void updatePreviewPosition(Position position) {
+    _currentPosition = position;
+    _isLoading = false;
+    _errorMessage = null;
+    _notify();
+  }
+
   // ─── Controls ─────────────────────────────────────────────────────────────
 
   void _startTicker() {
@@ -119,25 +132,73 @@ class TrackingService {
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _notify());
   }
 
+  /// ✅ Bug 3 Part B: Stream watchdog detects silent stream death and restarts.
+  void _startStreamWatchdog() {
+    _streamWatchdog?.cancel();
+    _streamWatchdog = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (!_isTracking || _isPaused) return;
+      
+      final lastUpdate = _lastUpdateTime;
+      if (lastUpdate == null) return;
+      
+      final elapsed = DateTime.now().difference(lastUpdate);
+      if (elapsed > const Duration(seconds: 5)) {
+        debugPrint('[TrackingService] Stream watchdog: no update for ${elapsed.inSeconds}s, restarting...');
+        _restartStream();
+      }
+    });
+  }
+
+  void _stopStreamWatchdog() {
+    _streamWatchdog?.cancel();
+    _streamWatchdog = null;
+  }
+
+  void _startPositionStream() {
+    _positionStream?.cancel();
+    _positionStream = _locationService.getPositionStream().listen(
+      (position) {
+        // ✅ Bug 3 Part A: Always update the marker position, never filter it
+        _currentPosition = position;
+        _lastUpdateTime = DateTime.now();
+        
+        // Only route filtering happens here
+        addCoordinate(position);
+        _notify();
+      },
+      onError: (e) {
+        debugPrint('[TrackingService] Position stream error: $e');
+        _restartStream();
+      },
+      onDone: () {
+        debugPrint('[TrackingService] Position stream done, restarting...');
+        _restartStream();
+      },
+      cancelOnError: false,
+    );
+  }
+
+  void _restartStream() {
+    if (!_isTracking || _isPaused) return;
+    _startPositionStream();
+  }
+
   // ✅ FIX 4: Removed initial position capture - prevents phantom distance at start
   void startTracking() {
     _positionStream?.cancel();
     _ticker?.cancel();
+    _stopStreamWatchdog();
     routeCoordinates.clear();
+    _lastAcceptedRoutePosition = null;
+    _lastUpdateTime = null;
     _stopwatch.reset();
     _stopwatch.start();
     _isTracking = true;
     _isPaused = false;
 
-    // Do NOT capture initial position - prevents phantom distance
-    // Let GPS stream provide the first point to avoid variance
-
-    _positionStream = _locationService.getPositionStream().listen((position) {
-      _currentPosition = position;
-      addCoordinate(position.latitude, position.longitude);
-      _notify();
-    });
-
+    // Start GPS stream and watchdog
+    _startPositionStream();
+    _startStreamWatchdog();
     _startTicker();
     _notify();
   }
@@ -147,6 +208,7 @@ class TrackingService {
     _isPaused = true;
     _positionStream?.pause();
     _ticker?.cancel();
+    _stopStreamWatchdog();
     _notify();
   }
 
@@ -154,7 +216,9 @@ class TrackingService {
     _stopwatch.start();
     _isPaused = false;
     _positionStream?.resume();
+    _lastUpdateTime = DateTime.now();
     _startTicker();
+    _startStreamWatchdog();
     _notify();
   }
 
@@ -164,7 +228,10 @@ class TrackingService {
     _positionStream = null;
     _ticker?.cancel();
     _ticker = null;
+    _stopStreamWatchdog();
     routeCoordinates.clear();
+    _lastAcceptedRoutePosition = null;
+    _lastUpdateTime = null;
     _stopwatch
       ..stop()
       ..reset();
@@ -179,26 +246,20 @@ class TrackingService {
     _positionStream = null;
     _ticker?.cancel();
     _ticker = null;
+    _stopStreamWatchdog();
     _stopwatch.stop();
     _isTracking = false;
     _isPaused = false;
+    _lastAcceptedRoutePosition = null;
+    _lastUpdateTime = null;
 
-    // BUG FIX: Use original routeCoordinates (with jitter filter applied during collection)
-    // DO NOT apply additional filtering that distorts the route
-    // The routeCoordinates already have 2m minimum distance applied, which is sufficient
+    // Single filtering pipeline: use points already accepted by addCoordinate.
+    final cleanCoordinates = List<Map<String, double>>.from(routeCoordinates);
 
-    // Filter ONLY obvious outliers, but keep the majority of valid points
-    final cleanCoordinates = _filterObviousOutliersOnly(routeCoordinates);
-
-    final distanceMeters =
-    _locationService.calculateDistance(cleanCoordinates);
+    final distanceMeters = _locationService.calculateDistance(cleanCoordinates);
     final durationSecs = _stopwatch.elapsed.inSeconds;
-    // Guard: distance < 100 m means essentially stationary — save 0.0 so
-    // the UI shows --'--" instead of an absurd pace like 76'47"/km.
     final pace = distanceMeters >= 100 ? currentPaceMinPerKm : 0.0;
 
-    // IMPORTANT: Do NOT apply moving average smoothing
-    // Return raw coordinates to preserve accurate route visualization
     return ActivityModel(
       distance: distanceMeters,
       durationSeconds: durationSecs,
@@ -208,73 +269,78 @@ class TrackingService {
     );
   }
 
-  /// Filters only OBVIOUS outliers (impossible speeds > 20 m/s).
-  /// Preserves the natural route shape for accurate visualization.
-  List<Map<String, double>> _filterObviousOutliersOnly(
-      List<Map<String, double>> coordinates,
-      ) {
-    if (coordinates.length < 2) return List<Map<String, double>>.from(coordinates);
-
-    final filtered = <Map<String, double>>[coordinates.first];
-
-    for (int i = 1; i < coordinates.length; i++) {
-      final current = coordinates[i];
-      final last = filtered.last;
-
-      final distance = Geolocator.distanceBetween(
-        last['lat']!,
-        last['lng']!,
-        current['lat']!,
-        current['lng']!,
-      );
-
-      // Only reject completely impossible jumps (> 20 m/s)
-      // Keep normal variations to preserve route accuracy
-      final impliedSpeedMps = distance / 1.0; // ~1 second between updates
-      if (impliedSpeedMps > 20.0) {
-        continue; // Skip obvious impossible jump
-      }
-
-      filtered.add(current);
-    }
-
-    if (filtered.isEmpty) {
-      return [coordinates.first, coordinates.last];
-    }
-
-    if (filtered.last != coordinates.last) {
-      filtered.add(coordinates.last);
-    }
-
-    return filtered;
-  }
-
-  /// Adds a new GPS coordinate point to the route.
-  /// Only adds if not paused and tracking is active.
-  // ✅ FIX 5: Improved logic - always accept first point, then validate >= 2m for subsequent
-  void addCoordinate(double lat, double lng) {
+  /// Adds a new GPS position to the route using multi-stage validation.
+  /// Filters route points; always updates current marker position (decoupled).
+  ///
+  /// ✅ Bug 1 fix: Accuracy threshold blocks off-road jumps
+  /// ✅ Bug 2 fix: Distance gate prevents stationary drift without freezing
+  /// ✅ Bug 3 fix: currentPosition already updated; only route filtering here
+  void addCoordinate(Position position) {
     if (!_isTracking || _isPaused) return;
 
-    // Always accept first point (starting position)
-    if (routeCoordinates.isEmpty) {
-      routeCoordinates.add({'lat': lat, 'lng': lng});
+    // Stage 1: Accuracy filter — drop noisy satellite fixes
+    if (position.accuracy > _maxAccuracyMeters) {
+      debugPrint('[TrackingService] Dropped position: accuracy ${position.accuracy.toStringAsFixed(1)}m > threshold');
       return;
     }
 
-    // For subsequent points: only add if >= 2 meters from last point
-    final last = routeCoordinates.last;
+    // Always accept first point
+    if (routeCoordinates.isEmpty) {
+      routeCoordinates.add({'lat': position.latitude, 'lng': position.longitude});
+      _lastAcceptedRoutePosition = position;
+      return;
+    }
+
+    final last = _lastAcceptedRoutePosition;
+    if (last == null) {
+      routeCoordinates.add({'lat': position.latitude, 'lng': position.longitude});
+      _lastAcceptedRoutePosition = position;
+      return;
+    }
+
+    // Stage 2: Distance-based filtering (prevents sub-3m jitter)
     final distance = Geolocator.distanceBetween(
-      last['lat']!,
-      last['lng']!,
-      lat,
-      lng,
+      last.latitude,
+      last.longitude,
+      position.latitude,
+      position.longitude,
     );
 
-    // Only record real movement (>= 2 meters)
-    // This prevents GPS jitter from creating fake distance when standing still
-    if (distance >= _minPointDistanceMeters) {
-      routeCoordinates.add({'lat': lat, 'lng': lng});
+    if (distance < _minPointDistanceMeters) {
+      // Sub-threshold movement — ignore but don't reject the entire stream
+      return;
     }
+
+    // Stage 3: Speed validation (rejects jumps, allows slow movement)
+    final timeDiffMs = position.timestamp.difference(last.timestamp).inMilliseconds;
+    if (timeDiffMs > 0) {
+      final speedMps = distance / (timeDiffMs / 1000.0);
+      final sensorSpeedMps = position.speed < 0 ? speedMps : position.speed;
+
+      // When mostly stationary, require bigger movement if accuracy is weak.
+      final adaptiveStationaryDistance = (_minPointDistanceMeters +
+              (position.accuracy * 0.18).clamp(0.0, 3.5))
+          .clamp(_minPointDistanceMeters, 5.5);
+      if (sensorSpeedMps < _stationarySpeedMps &&
+          distance < adaptiveStationaryDistance) {
+        debugPrint(
+          '[TrackingService] Dropped position: stationary drift ${distance.toStringAsFixed(1)}m '
+          '< ${adaptiveStationaryDistance.toStringAsFixed(1)}m (acc ${position.accuracy.toStringAsFixed(1)}m)',
+        );
+        return;
+      }
+      
+      // Only reject impossible speeds (> 12 m/s ≈ 43 km/h)
+      // Do NOT use speedMps < 0.5 cutoff — causes frozen markers
+      if (speedMps > _maxSpeedMps) {
+        debugPrint('[TrackingService] Dropped position: speed ${speedMps.toStringAsFixed(1)} m/s exceeds limit');
+        return;
+      }
+    }
+
+    // Stage 4: Accept and optionally smooth
+    routeCoordinates.add({'lat': position.latitude, 'lng': position.longitude});
+    _lastAcceptedRoutePosition = position;
   }
 
   void tick() => _notify();
@@ -282,5 +348,6 @@ class TrackingService {
   void dispose() {
     _positionStream?.cancel();
     _ticker?.cancel();
+    _stopStreamWatchdog();
   }
 }

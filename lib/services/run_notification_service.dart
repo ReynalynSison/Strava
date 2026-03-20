@@ -149,7 +149,7 @@ class RunNotificationService {
 
     await _plugin.show(
       _notificationId,
-      'Strava',
+       'Strivo',
       statsLine,
       details,
       payload: paused ? 'paused' : 'running',

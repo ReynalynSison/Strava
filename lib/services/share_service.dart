@@ -38,6 +38,19 @@ class ShareService {
     }
   }
 
+  /// Shares the original photo file in full resolution.
+  Future<void> shareOriginalPhoto(String photoPath, {String? text}) async {
+    final file = File(photoPath);
+    if (!file.existsSync()) {
+      throw Exception('Photo file not found');
+    }
+
+    await Share.shareXFiles(
+      [XFile(file.path)],
+      text: text ?? 'Check out my run! 🏃',
+    );
+  }
+
   /// Captures the widget bound to [key] as a transparent-background PNG
   /// and opens the iOS share sheet. Use this with [StickerOverlayWidget].
   /// [ImageByteFormat.png] preserves the alpha channel for transparency.

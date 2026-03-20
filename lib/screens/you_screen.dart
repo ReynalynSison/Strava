@@ -68,19 +68,21 @@ class YouScreen extends ConsumerWidget {
     final username = settings.username.isEmpty ? 'Runner' : settings.username;
     final useMetric = settings.useMetric;
     final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
+    final scaffoldBg = CupertinoColors.systemGroupedBackground.resolveFrom(context);
+    final navBg = CupertinoColors.systemBackground.resolveFrom(context);
 
     // --- BLUE THEME COLOR ---
     const Color themeBlue = CupertinoColors.activeBlue;
 
     return CupertinoPageScaffold(
-      backgroundColor: isDark ? CupertinoColors.black : const Color(0xFFF2F2F7),
+      backgroundColor: scaffoldBg,
       child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
           CupertinoSliverNavigationBar(
             largeTitle: const Text('You'),
             border: null,
-            backgroundColor: (isDark ? CupertinoColors.black : CupertinoColors.white).withOpacity(0.8),
+            backgroundColor: navBg.withValues(alpha: 0.85),
           ),
           CupertinoSliverRefreshControl(
             onRefresh: () => _refreshActivities(ref),
@@ -108,7 +110,7 @@ class YouScreen extends ConsumerWidget {
               child: _buildStatsRow(thisWeekActivities, context, isDark, useMetric, themeBlue),
             ),
             SliverToBoxAdapter(
-              child: _buildWeeklyChart(isDark, thisWeekActivities, themeBlue),
+              child: _buildWeeklyChart(context, isDark, thisWeekActivities, themeBlue),
             ),
 
             // ── This Month ───────────────────────────────────────────
@@ -120,7 +122,7 @@ class YouScreen extends ConsumerWidget {
             // ── All Time ─────────────────────────────────────────────
             SliverToBoxAdapter(child: _buildSectionHeader('ALL TIME PROGRESS')),
             SliverToBoxAdapter(
-              child: _buildAllTimeCard(isDark, useMetric, activities, themeBlue),
+              child: _buildAllTimeCard(useMetric, activities, themeBlue),
             ),
 
             const SliverToBoxAdapter(child: SizedBox(height: 60)),
@@ -151,7 +153,7 @@ class YouScreen extends ConsumerWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: themeColor.withOpacity(0.12),
+                    color: themeColor.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
@@ -204,24 +206,24 @@ class YouScreen extends ConsumerWidget {
         crossAxisSpacing: 12,
         childAspectRatio: 2.1,
         children: [
-          _buildStatTile('Distance', formatDistance(distKm * 1000, useMetric: useMetric),
+          _buildStatTile(context, 'Distance', formatDistance(distKm * 1000, useMetric: useMetric),
               CupertinoIcons.map_fill, themeColor, isDark),
-          _buildStatTile('Duration', formatDuration(duration),
+          _buildStatTile(context, 'Duration', formatDuration(duration),
               CupertinoIcons.stopwatch_fill, const Color(0xFF5856D6), isDark), // Indigo for duration
-          _buildStatTile('Runs', '$runs',
+          _buildStatTile(context, 'Runs', '$runs',
               CupertinoIcons.flame_fill, CupertinoColors.systemTeal, isDark),
-          _buildStatTile('Avg Pace', pace > 0 ? formatPace(pace, useMetric: useMetric) : '--',
+          _buildStatTile(context, 'Avg Pace', pace > 0 ? formatPace(pace, useMetric: useMetric) : '--',
               CupertinoIcons.gauge, CupertinoColors.systemPurple, isDark),
         ],
       ),
     );
   }
 
-  Widget _buildStatTile(String label, String value, IconData icon, Color color, bool isDark) {
+  Widget _buildStatTile(BuildContext context, String label, String value, IconData icon, Color color, bool isDark) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white,
+        color: CupertinoColors.secondarySystemGroupedBackground.resolveFrom(context),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
@@ -229,7 +231,7 @@ class YouScreen extends ConsumerWidget {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.12),
+              color: color.withValues(alpha: 0.12),
               shape: BoxShape.circle,
             ),
             child: Icon(icon, color: color, size: 18),
@@ -253,7 +255,7 @@ class YouScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildWeeklyChart(bool isDark, List<ActivityModel> thisWeekActivities, Color themeColor) {
+  Widget _buildWeeklyChart(BuildContext context, bool isDark, List<ActivityModel> thisWeekActivities, Color themeColor) {
     final data = _weeklyBarData(thisWeekActivities);
     final maxVal = data.reduce((a, b) => a > b ? a : b);
     final days = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
@@ -264,7 +266,7 @@ class YouScreen extends ConsumerWidget {
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white,
+          color: CupertinoColors.secondarySystemGroupedBackground.resolveFrom(context),
           borderRadius: BorderRadius.circular(20),
         ),
         child: Column(
@@ -298,11 +300,11 @@ class YouScreen extends ConsumerWidget {
                               margin: const EdgeInsets.symmetric(horizontal: 6),
                               decoration: BoxDecoration(
                                 gradient: isToday ? LinearGradient(
-                                  colors: [themeColor, themeColor.withOpacity(0.6)],
+                                  colors: [themeColor, themeColor.withValues(alpha: 0.6)],
                                   begin: Alignment.topCenter,
                                   end: Alignment.bottomCenter,
                                 ) : null,
-                                color: isToday ? null : (isDark ? CupertinoColors.systemGrey6 : const Color(0xFFE5E5EA)),
+                                color: isToday ? null : CupertinoColors.systemGrey5.resolveFrom(context),
                                 borderRadius: BorderRadius.circular(6),
                               ),
                             ),
@@ -324,7 +326,7 @@ class YouScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildAllTimeCard(bool isDark, bool useMetric, List<ActivityModel> activities, Color themeColor) {
+  Widget _buildAllTimeCard(bool useMetric, List<ActivityModel> activities, Color themeColor) {
     final totalKm = _totalDistanceKm(activities);
     final totalSecs = _totalDurationSeconds(activities);
     final avgPace = _avgPace(activities);
@@ -343,7 +345,7 @@ class YouScreen extends ConsumerWidget {
             opacity: 0.25,
           ),
           gradient: LinearGradient(
-            colors: [themeColor.withOpacity(0.85), const Color(0xFF001D39)], // Navy-Blue gradient
+            colors: [themeColor.withValues(alpha: 0.85), const Color(0xFF001D39)], // Navy-Blue gradient
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -380,7 +382,7 @@ class YouScreen extends ConsumerWidget {
       children: [
         Text(value, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: CupertinoColors.white)),
         const SizedBox(height: 4),
-        Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: CupertinoColors.white.withOpacity(0.7), letterSpacing: 0.5)),
+        Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: CupertinoColors.white.withValues(alpha: 0.7), letterSpacing: 0.5)),
       ],
     );
   }

@@ -1,9 +1,13 @@
+import 'dart:async';
 import 'dart:io';
+import 'package:flutter_compass/flutter_compass.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import '../providers/app_providers.dart';
+import '../services/location_service.dart';
 import '../models/activity_model.dart';
 import 'activity_summary_screen.dart';
 import 'run_photo_screen.dart';
@@ -18,9 +22,19 @@ class RecordScreen extends ConsumerStatefulWidget {
 class _RecordScreenState extends ConsumerState<RecordScreen> {
   // ─── Map ──────────────────────────────────────────────────────────────────
   final MapController _mapController = MapController();
+  final LocationService _locationService = LocationService();
   bool _didShowPermissionDialog = false;
   late final ProviderSubscription<TrackingState> _trackingSub;
-
+  StreamSubscription<CompassEvent>? _compassSub;
+  StreamSubscription<Position>? _previewLocationSub;
+  double _currentHeadingDegrees = 0;
+  bool _headingFollowEnabled = false;
+  bool _hasHeadingFix = false;
+  bool _locationLockEnabled = true;
+  bool _previewLocationEnabled = true;
+  final double _mapZoom = 20.0;
+  LatLng _lastMapCenter = const LatLng(14.5995, 120.9842);
+  
   static const double _minDistanceKmForDirectSave = 0.1; // 100 m
   static const int _minDurationSecsForDirectSave = 60;
 
@@ -34,6 +48,7 @@ class _RecordScreenState extends ConsumerState<RecordScreen> {
       (previous, next) {
         final prevPos = previous?.currentPosition;
         final nextPos = next.currentPosition;
+        _syncPreviewLocationStream(next.isRunning);
 
         if (next.errorMessage == 'Location permission denied' &&
             !_didShowPermissionDialog) {
@@ -47,22 +62,61 @@ class _RecordScreenState extends ConsumerState<RecordScreen> {
             (prevPos == null ||
                 prevPos.latitude != nextPos.latitude ||
                 prevPos.longitude != nextPos.longitude)) {
+          _lastMapCenter = LatLng(nextPos.latitude, nextPos.longitude);
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
+            if (!_locationLockEnabled) return;
+            // ✅ Move map to follow user position
             _mapController.move(
               LatLng(nextPos.latitude, nextPos.longitude),
-              _mapController.camera.zoom,
+              _mapZoom,
             );
+            if (_headingFollowEnabled && _hasHeadingFix) {
+              _mapController.rotate(_currentHeadingDegrees);
+            }
           });
         }
       },
     );
+
+    _compassSub = FlutterCompass.events?.listen((event) {
+      final heading = event.heading;
+      if (!mounted) return;
+
+      if (heading == null || heading.isNaN) {
+        setState(() => _hasHeadingFix = false);
+        return;
+      }
+
+      final normalized = _normalizeHeading(heading);
+      final corrected = _mirrorLeftRight(normalized);
+
+      final nextHeading = _hasHeadingFix
+          ? _normalizeHeading(
+              _currentHeadingDegrees +
+                  _headingDelta(_currentHeadingDegrees, corrected) * 0.25,
+            )
+          : corrected;
+
+      setState(() {
+        _currentHeadingDegrees = nextHeading;
+        _hasHeadingFix = true;
+      });
+
+      if (_headingFollowEnabled) {
+        _mapController.rotate(nextHeading);
+      }
+    });
+    
     Future.microtask(() => ref.read(trackingProvider.notifier).initializeLocation());
+    _syncPreviewLocationStream(ref.read(trackingProvider).isRunning);
   }
 
   @override
   void dispose() {
     _trackingSub.close();
+    _compassSub?.cancel();
+    _previewLocationSub?.cancel();
     _mapController.dispose();
     super.dispose();
   }
@@ -194,7 +248,8 @@ class _RecordScreenState extends ConsumerState<RecordScreen> {
           builder: (ctx, setSheetState) {
             return Container(
               decoration: BoxDecoration(
-                color: CupertinoTheme.of(ctx).scaffoldBackgroundColor,
+                color: CupertinoColors.secondarySystemGroupedBackground
+                    .resolveFrom(ctx),
                 borderRadius:
                     const BorderRadius.vertical(top: Radius.circular(20)),
               ),
@@ -229,12 +284,12 @@ class _RecordScreenState extends ConsumerState<RecordScreen> {
                     ),
                   ),
                   const SizedBox(height: 6),
-                  const Text(
+                  Text(
                     'Would you like to post this run to your Feed?',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 14,
-                      color: CupertinoColors.secondaryLabel,
+                      color: CupertinoColors.label.resolveFrom(ctx),
                     ),
                   ),
                   const SizedBox(height: 20),
@@ -263,7 +318,8 @@ class _RecordScreenState extends ConsumerState<RecordScreen> {
                       minLines: 2,
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: CupertinoColors.systemGrey6,
+                        color: CupertinoColors.tertiarySystemFill
+                            .resolveFrom(ctx),
                         borderRadius: BorderRadius.circular(10),
                       ),
                     ),
@@ -367,75 +423,7 @@ class _RecordScreenState extends ConsumerState<RecordScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final trackingState = ref.watch(trackingProvider);
-
-
-    if (trackingState.isLoading) return _buildLoading();
-    if (trackingState.errorMessage != null) {
-      return _buildError(trackingState.errorMessage!);
-    }
-    if (trackingState.currentPosition == null) return _buildNoLocation();
     return _buildMap();
-  }
-
-  // ─── Loading State ────────────────────────────────────────────────────────
-
-  Widget _buildLoading() {
-    return const CupertinoPageScaffold(
-      navigationBar: CupertinoNavigationBar(middle: Text('Record')),
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CupertinoActivityIndicator(radius: 20),
-            SizedBox(height: 16),
-            Text(
-              'Getting your location...',
-              style: TextStyle(color: CupertinoColors.secondaryLabel),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ─── Error State ──────────────────────────────────────────────────────────
-
-  Widget _buildError(String errorMessage) {
-    return CupertinoPageScaffold(
-      navigationBar: const CupertinoNavigationBar(middle: Text('Record')),
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(CupertinoIcons.location_slash,
-                  size: 64, color: CupertinoColors.systemRed),
-              const SizedBox(height: 16),
-              Text(errorMessage,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 16)),
-              const SizedBox(height: 24),
-              CupertinoButton.filled(
-                child: const Text('Retry'),
-                onPressed: () {
-                  _didShowPermissionDialog = false;
-                  ref.read(trackingProvider.notifier).initializeLocation();
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildNoLocation() {
-    return const CupertinoPageScaffold(
-      navigationBar: CupertinoNavigationBar(middle: Text('Record')),
-      child: Center(child: Text('No location data')),
-    );
   }
 
   // ─── Main Map View ────────────────────────────────────────────────────────
@@ -444,7 +432,10 @@ class _RecordScreenState extends ConsumerState<RecordScreen> {
     final trackingState = ref.watch(trackingProvider);
     final isTracking = trackingState.isRunning;
     final isPaused = trackingState.isPaused;
-    final currentPosition = trackingState.currentPosition!;
+    final currentPosition = trackingState.currentPosition;
+    if (currentPosition != null) {
+      _lastMapCenter = LatLng(currentPosition.latitude, currentPosition.longitude);
+    }
     final isDark = CupertinoTheme.brightnessOf(context) == Brightness.dark;
     final tileUrl = isDark
         ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
@@ -454,6 +445,7 @@ class _RecordScreenState extends ConsumerState<RecordScreen> {
     final routePoints = trackingState.coordinates
         .map((c) => LatLng(c['lat']!, c['lng']!))
         .toList();
+    final displayRoutePoints = _buildDisplayRoute(routePoints);
 
     return CupertinoPageScaffold(
       // No nav bar — map is full screen
@@ -463,11 +455,9 @@ class _RecordScreenState extends ConsumerState<RecordScreen> {
           FlutterMap(
             mapController: _mapController,
             options: MapOptions(
-              initialCenter: LatLng(
-                currentPosition.latitude,
-                currentPosition.longitude,
-              ),
-              initialZoom: 16.0,
+              initialCenter: _lastMapCenter,
+              initialZoom: _mapZoom,
+              keepAlive: true,
             ),
             children: [
               TileLayer(
@@ -478,11 +468,11 @@ class _RecordScreenState extends ConsumerState<RecordScreen> {
               ),
 
               // Route polyline
-              if (routePoints.length >= 2)
+              if (displayRoutePoints.length >= 2)
                 PolylineLayer(
                   polylines: [
                     Polyline(
-                      points: routePoints,
+                      points: displayRoutePoints,
                       color: CupertinoColors.systemOrange,
                       strokeWidth: 5.0,
                     ),
@@ -492,24 +482,25 @@ class _RecordScreenState extends ConsumerState<RecordScreen> {
               // Current position marker
               MarkerLayer(
                 markers: [
-                  Marker(
-                    point: LatLng(
-                      currentPosition.latitude,
-                      currentPosition.longitude,
-                    ),
-                    width: 20,
-                    height: 20,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: CupertinoColors.systemBlue,
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: CupertinoColors.white,
-                          width: 2,
+                  if (currentPosition != null && (_previewLocationEnabled || isTracking))
+                    Marker(
+                      point: LatLng(
+                        currentPosition.latitude,
+                        currentPosition.longitude,
+                      ),
+                      width: 20,
+                      height: 20,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: CupertinoColors.systemBlue,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: CupertinoColors.white,
+                            width: 2,
+                          ),
                         ),
                       ),
                     ),
-                  ),
 
                   // Start marker (green dot)
                   if (routePoints.isNotEmpty)
@@ -530,51 +521,65 @@ class _RecordScreenState extends ConsumerState<RecordScreen> {
           ),
 
           // ── Stats Overlay (top) ──────────────────────────────────────
-          if (isTracking)
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: CupertinoColors.systemBackground.resolveFrom(context).withValues(alpha: 0.92),
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        BoxShadow(
-                          color: CupertinoColors.black.withValues(alpha: 0.1),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        _statTile(
-                          label: 'DISTANCE',
-                          value: trackingState.distanceKm < 1
-                              ? '${(trackingState.distanceKm * 1000).toStringAsFixed(0)} m'
-                              : '${trackingState.distanceKm.toStringAsFixed(2)} km',
-                        ),
-                        _statDivider(),
-                        _statTile(
-                          label: 'TIME',
-                          value: trackingState.formattedDuration,
-                        ),
-                        _statDivider(),
-                        _statTile(
-                          label: 'PACE',
-                          value: trackingState.formattedPace,
-                        ),
-                      ],
-                    ),
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: CupertinoColors.systemBackground.resolveFrom(context).withValues(alpha: 0.92),
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: CupertinoColors.black.withValues(alpha: 0.1),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      _statTile(
+                        label: 'DISTANCE',
+                        value: trackingState.distanceKm < 1
+                            ? '${(trackingState.distanceKm * 1000).toStringAsFixed(0)} m'
+                            : '${trackingState.distanceKm.toStringAsFixed(2)} km',
+                      ),
+                      _statDivider(),
+                      _statTile(
+                        label: 'TIME',
+                        value: trackingState.formattedDuration,
+                      ),
+                      _statDivider(),
+                      _statTile(
+                        label: 'PACE',
+                        value: trackingState.formattedPace,
+                      ),
+                    ],
                   ),
                 ),
               ),
+            ),
+          ),
+
+          if (trackingState.isLoading)
+            Positioned(
+              top: 84,
+              left: 16,
+              child: _statusChip('Getting your location...'),
+            ),
+
+          if (!trackingState.isLoading && trackingState.errorMessage != null)
+            Positioned(
+              top: 84,
+              left: 16,
+              right: 16,
+              child: _statusChip('${trackingState.errorMessage} • Use location button'),
             ),
 
           // ── Paused Banner ────────────────────────────────────────────
@@ -687,7 +692,289 @@ class _RecordScreenState extends ConsumerState<RecordScreen> {
               ),
             ),
           ),
+
+          if (trackingState.currentPosition != null)
+            Positioned(
+              top: 100,
+              right: 0,
+              child: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 16),
+                  child: GestureDetector(
+                    onTap: _toggleHeadingFollow,
+                    child: Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: _headingFollowEnabled
+                            ? const Color(0xFF2424EA)
+                            : CupertinoColors.systemBackground
+                                .resolveFrom(context)
+                                .withValues(alpha: 0.92),
+                        boxShadow: [
+                          BoxShadow(
+                            color: CupertinoColors.black
+                                .withValues(alpha: 0.15),
+                            blurRadius: 8,
+                          ),
+                        ],
+                      ),
+                      child: Icon(
+                        CupertinoIcons.compass,
+                        color: _headingFollowEnabled
+                            ? CupertinoColors.white
+                            : CupertinoColors.label.resolveFrom(context),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+          Positioned(
+            top: 160,
+            right: 0,
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.only(right: 16),
+                child: GestureDetector(
+                  onTap: _toggleLocationLock,
+                  child: Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: _locationLockEnabled
+                          ? const Color(0xFF2424EA)
+                          : CupertinoColors.systemBackground
+                              .resolveFrom(context)
+                              .withValues(alpha: 0.92),
+                      boxShadow: [
+                        BoxShadow(
+                          color: CupertinoColors.black.withValues(alpha: 0.15),
+                          blurRadius: 8,
+                        ),
+                      ],
+                    ),
+                    child: Icon(
+                      _locationLockEnabled
+                          ? CupertinoIcons.lock_fill
+                          : CupertinoIcons.lock_open,
+                      color: _locationLockEnabled
+                          ? CupertinoColors.white
+                          : CupertinoColors.label.resolveFrom(context),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          Positioned(
+            top: 220,
+            right: 0,
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.only(right: 16),
+                child: GestureDetector(
+                  onTap: _toggleLiveLocation,
+                  child: Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: _previewLocationEnabled
+                          ? const Color(0xFF2424EA)
+                          : CupertinoColors.systemBackground
+                              .resolveFrom(context)
+                              .withValues(alpha: 0.92),
+                      boxShadow: [
+                        BoxShadow(
+                          color: CupertinoColors.black.withValues(alpha: 0.15),
+                          blurRadius: 8,
+                        ),
+                      ],
+                    ),
+                    child: Icon(
+                      _previewLocationEnabled
+                          ? CupertinoIcons.location_solid
+                          : CupertinoIcons.location_slash,
+                      color: _previewLocationEnabled
+                          ? CupertinoColors.white
+                          : CupertinoColors.label.resolveFrom(context),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+
         ],
+      ),
+    );
+  }
+
+  void _toggleHeadingFollow() {
+    final currentPosition = ref.read(trackingProvider).currentPosition;
+    if (currentPosition == null) return;
+
+    final shouldEnable = !_headingFollowEnabled;
+    setState(() => _headingFollowEnabled = shouldEnable);
+
+    if (!shouldEnable) {
+      _mapController.rotate(0);
+      return;
+    }
+
+    final rotation = _hasHeadingFix ? _currentHeadingDegrees : 0.0;
+    _mapController.move(
+      LatLng(currentPosition.latitude, currentPosition.longitude),
+      _mapZoom,
+    );
+    _mapController.rotate(rotation);
+  }
+
+  void _toggleLocationLock() {
+    final currentPosition = ref.read(trackingProvider).currentPosition;
+    final shouldEnable = !_locationLockEnabled;
+    setState(() => _locationLockEnabled = shouldEnable);
+
+    _syncPreviewLocationStream(ref.read(trackingProvider).isRunning);
+
+    if (!shouldEnable) return;
+
+    if (currentPosition == null) {
+      ref.read(trackingProvider.notifier).initializeLocation();
+      return;
+    }
+
+    _mapController.move(
+      LatLng(currentPosition.latitude, currentPosition.longitude),
+      _mapZoom,
+    );
+    if (_headingFollowEnabled && _hasHeadingFix) {
+      _mapController.rotate(_currentHeadingDegrees);
+    }
+  }
+
+  void _toggleLiveLocation() {
+    final currentPosition = ref.read(trackingProvider).currentPosition;
+    final shouldEnable = !_previewLocationEnabled;
+    setState(() {
+      _previewLocationEnabled = shouldEnable;
+      if (!shouldEnable) {
+        _locationLockEnabled = false;
+      }
+    });
+
+    _syncPreviewLocationStream(ref.read(trackingProvider).isRunning);
+
+    if (!shouldEnable) return;
+
+    if (currentPosition == null) {
+      ref.read(trackingProvider.notifier).initializeLocation();
+      return;
+    }
+
+    _lastMapCenter = LatLng(currentPosition.latitude, currentPosition.longitude);
+    _mapController.move(_lastMapCenter, _mapZoom);
+  }
+
+  void _syncPreviewLocationStream(bool isRunning) {
+    if (isRunning || !_previewLocationEnabled) {
+      _previewLocationSub?.cancel();
+      _previewLocationSub = null;
+      return;
+    }
+    _startPreviewLocationStream();
+  }
+
+  void _startPreviewLocationStream() {
+    if (_previewLocationSub != null) return;
+
+    _previewLocationSub = _locationService.getPositionStream().listen(
+      (position) {
+        if (!mounted) return;
+        ref.read(trackingProvider.notifier).updatePreviewPosition(position);
+      },
+      onError: (_) {
+        _previewLocationSub?.cancel();
+        _previewLocationSub = null;
+      },
+    );
+  }
+
+  List<LatLng> _buildDisplayRoute(List<LatLng> raw) {
+    if (raw.length < 3) return raw;
+
+    const segmentsPerCurve = 5;
+    final smoothed = <LatLng>[raw.first];
+
+    for (int i = 0; i < raw.length - 1; i++) {
+      final p0 = i == 0 ? raw[i] : raw[i - 1];
+      final p1 = raw[i];
+      final p2 = raw[i + 1];
+      final p3 = i + 2 < raw.length ? raw[i + 2] : raw[i + 1];
+
+      for (int step = 1; step <= segmentsPerCurve; step++) {
+        final t = step / segmentsPerCurve;
+        final t2 = t * t;
+        final t3 = t2 * t;
+
+        final lat = 0.5 *
+            ((2 * p1.latitude) +
+                (-p0.latitude + p2.latitude) * t +
+                (2 * p0.latitude - 5 * p1.latitude + 4 * p2.latitude - p3.latitude) * t2 +
+                (-p0.latitude + 3 * p1.latitude - 3 * p2.latitude + p3.latitude) * t3);
+
+        final lng = 0.5 *
+            ((2 * p1.longitude) +
+                (-p0.longitude + p2.longitude) * t +
+                (2 * p0.longitude - 5 * p1.longitude + 4 * p2.longitude - p3.longitude) * t2 +
+                (-p0.longitude + 3 * p1.longitude - 3 * p2.longitude + p3.longitude) * t3);
+
+        smoothed.add(LatLng(lat, lng));
+      }
+    }
+
+    if (smoothed.last != raw.last) {
+      smoothed.add(raw.last);
+    }
+
+    return smoothed;
+  }
+
+  double _normalizeHeading(double heading) {
+    final normalized = heading % 360.0;
+    return normalized < 0 ? normalized + 360.0 : normalized;
+  }
+
+  double _mirrorLeftRight(double heading) {
+    // Mirror around the north-south axis: front/back stay aligned, left/right swap.
+    return _normalizeHeading(360.0 - heading);
+  }
+
+  double _headingDelta(double from, double to) {
+    final delta = _normalizeHeading(to) - _normalizeHeading(from);
+    if (delta > 180.0) return delta - 360.0;
+    if (delta < -180.0) return delta + 360.0;
+    return delta;
+  }
+
+  Widget _statusChip(String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: CupertinoColors.systemBackground.resolveFrom(context).withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 12,
+          color: CupertinoColors.secondaryLabel,
+        ),
       ),
     );
   }

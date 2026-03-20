@@ -1,14 +1,11 @@
-import 'dart:io';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:local_auth/local_auth.dart';
 import 'main.dart';
-import 'models/activity_model.dart';
 import 'providers/app_providers.dart';
 
 // --- Theme Constants ---
 const Color themeBlue = CupertinoColors.activeBlue;
-const Color themeTeal = Color(0xFF64FFDA);
 
 class Settings extends ConsumerStatefulWidget {
   const Settings({super.key});
@@ -30,15 +27,22 @@ class _SettingsState extends ConsumerState<Settings> {
     String additionalInfo = '',
     VoidCallback? onTap,
   }) {
+    final titleColor = CupertinoColors.label.resolveFrom(context);
+    final infoColor = CupertinoColors.secondaryLabel.resolveFrom(context);
+
     return CupertinoListTile(
       onTap: onTap,
       title: Text(
         title,
-        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+        style: TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w500,
+          color: titleColor,
+        ),
       ),
       additionalInfo: Text(
         additionalInfo,
-        style: const TextStyle(color: CupertinoColors.secondaryLabel),
+        style: TextStyle(color: infoColor),
       ),
       trailing: trailing,
       leading: Container(
@@ -52,41 +56,7 @@ class _SettingsState extends ConsumerState<Settings> {
     );
   }
 
-  // ─── Logic (Seed & Delete) ───────────────────────────────────────────────
-  // (Pinanatili ko ang iyong original logic dito para sa functionality)
-
-  Future<void> _seedTestRun(BuildContext ctx) async {
-    final List<Map<String, double>> coords = [
-      {'lat': 41.3851, 'lng': 2.1734},
-      {'lat': 41.3858, 'lng': 2.1742},
-      {'lat': 41.3851, 'lng': 2.1734},
-    ];
-
-    final activity = ActivityModel(
-      distance: 4820,
-      durationSeconds: 1680,
-      pace: 5.79,
-      date: DateTime.now().subtract(const Duration(hours: 2)),
-      routeCoordinates: coords,
-    );
-
-    await ref.read(activityProvider.notifier).addActivity(activity);
-    if (!mounted) return;
-
-    showCupertinoDialog(
-      context: ctx,
-      builder: (_) => CupertinoAlertDialog(
-        title: const Text('Test Run Added ✅'),
-        content: const Text('A ~4.8 km test run has been saved.'),
-        actions: [
-          CupertinoDialogAction(
-            child: const Text('OK'),
-            onPressed: () => Navigator.pop(ctx),
-          ),
-        ],
-      ),
-    );
-  }
+  // ─── Logic (Delete) ──────────────────────────────────────────────────────
 
   Future<void> _deleteAllActivities(BuildContext ctx) async {
     final biometricsEnabled = ref.read(appSettingsProvider).biometrics;
@@ -135,26 +105,33 @@ class _SettingsState extends ConsumerState<Settings> {
   Widget build(BuildContext context) {
     final settings = ref.watch(appSettingsProvider);
     final notifier = ref.read(appSettingsProvider.notifier);
-    final isDark = CupertinoTheme.of(context).brightness == Brightness.dark;
+    final scaffoldBg = CupertinoColors.systemGroupedBackground.resolveFrom(context);
+    final sectionHeaderColor = CupertinoColors.secondaryLabel.resolveFrom(context);
+    final trailingChevronColor = CupertinoColors.systemGrey2.resolveFrom(context);
+    final versionColor = CupertinoColors.secondaryLabel.resolveFrom(context);
 
     return CupertinoPageScaffold(
-      backgroundColor: isDark ? CupertinoColors.black : const Color(0xFFF2F2F7),
+      backgroundColor: scaffoldBg,
       child: CustomScrollView(
         slivers: [
           CupertinoSliverNavigationBar(
             largeTitle: const Text('Settings'),
-            backgroundColor: (isDark ? CupertinoColors.black : const Color(0xFFF2F2F7)).withOpacity(0.8),
+            backgroundColor: scaffoldBg.withValues(alpha: 0.85),
             border: null,
           ),
           SliverList(
             delegate: SliverChildListDelegate([
               // ── APPEARANCE ──
               CupertinoListSection.insetGrouped(
-                header: const Text('APPEARANCE'),
+                header: Text(
+                  'APPEARANCE',
+                  style: TextStyle(color: sectionHeaderColor),
+                ),
                 children: [
                   _tile(
                     trailing: CupertinoSwitch(
-                      activeColor: themeBlue,
+                      activeTrackColor: themeBlue,
+                      trackColor: CupertinoColors.systemGrey4.resolveFrom(context),
                       value: settings.darkMode,
                       onChanged: notifier.toggleDarkMode,
                     ),
@@ -167,11 +144,15 @@ class _SettingsState extends ConsumerState<Settings> {
 
               // ── PREFERENCES ──
               CupertinoListSection.insetGrouped(
-                header: const Text('PREFERENCES'),
+                header: Text(
+                  'PREFERENCES',
+                  style: TextStyle(color: sectionHeaderColor),
+                ),
                 children: [
                   _tile(
                     trailing: CupertinoSwitch(
-                      activeColor: themeBlue,
+                      activeTrackColor: themeBlue,
+                      trackColor: CupertinoColors.systemGrey4.resolveFrom(context),
                       value: settings.useMetric,
                       onChanged: notifier.toggleUnits,
                     ),
@@ -182,7 +163,8 @@ class _SettingsState extends ConsumerState<Settings> {
                   ),
                   _tile(
                     trailing: CupertinoSwitch(
-                      activeColor: themeBlue,
+                      activeTrackColor: themeBlue,
+                      trackColor: CupertinoColors.systemGrey4.resolveFrom(context),
                       value: settings.runNotificationsEnabled,
                       onChanged: notifier.toggleRunNotifications,
                     ),
@@ -196,11 +178,15 @@ class _SettingsState extends ConsumerState<Settings> {
 
               // ── SECURITY & DATA ──
               CupertinoListSection.insetGrouped(
-                header: const Text('SECURITY & DATA'),
+                header: Text(
+                  'SECURITY & DATA',
+                  style: TextStyle(color: sectionHeaderColor),
+                ),
                 children: [
                   _tile(
                     trailing: CupertinoSwitch(
-                      activeColor: themeBlue,
+                      activeTrackColor: themeBlue,
+                      trackColor: CupertinoColors.systemGrey4.resolveFrom(context),
                       value: settings.biometrics,
                       onChanged: notifier.toggleBiometrics,
                     ),
@@ -211,7 +197,11 @@ class _SettingsState extends ConsumerState<Settings> {
                   _tile(
                     trailing: _isDeletingAll
                         ? const CupertinoActivityIndicator()
-                        : const Icon(CupertinoIcons.chevron_forward, size: 18, color: CupertinoColors.systemGrey2),
+                        : Icon(
+                            CupertinoIcons.chevron_forward,
+                            size: 18,
+                            color: trailingChevronColor,
+                          ),
                     title: 'Clear All Data',
                     color: CupertinoColors.systemRed,
                     icon: CupertinoIcons.trash_fill,
@@ -220,40 +210,32 @@ class _SettingsState extends ConsumerState<Settings> {
                 ],
               ),
 
-              // ── DEVELOPER TOOLS ──
-              CupertinoListSection.insetGrouped(
-                header: const Text('DEVELOPER'),
-                children: [
-                  _tile(
-                    trailing: const Icon(CupertinoIcons.add_circled_solid, color: themeTeal, size: 22),
-                    title: 'Seed Test Run',
-                    additionalInfo: 'Add 5km Activity',
-                    color: themeTeal.withOpacity(0.8),
-                    icon: CupertinoIcons.lab_flask_solid,
-                    onTap: () => _seedTestRun(context),
-                  ),
-                ],
-              ),
 
               // ── ACCOUNT ──
               CupertinoListSection.insetGrouped(
-                header: const Text('ACCOUNT'),
+                header: Text(
+                  'ACCOUNT',
+                  style: TextStyle(color: sectionHeaderColor),
+                ),
                 children: [
                   _tile(
                     trailing: const Icon(CupertinoIcons.power, color: CupertinoColors.systemRed, size: 20),
                     title: 'Sign Out',
                     additionalInfo: settings.username,
                     color: CupertinoColors.systemPurple,
-                    icon: CupertinoIcons.person_crop_circle_fill_badge_exclam,
+                    icon: CupertinoIcons.person,
                     onTap: () => _showSignOutDialog(context),
                   ),
                 ],
               ),
               const SizedBox(height: 40),
-              const Center(
+              Center(
                 child: Text(
                   'RunTracker v1.0.4',
-                  style: TextStyle(color: CupertinoColors.systemGrey, fontSize: 13),
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: versionColor,
+                  ),
                 ),
               ),
               const SizedBox(height: 60),

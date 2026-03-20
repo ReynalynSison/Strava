@@ -1,27 +1,112 @@
 import 'package:flutter/cupertino.dart';
+import 'dart:io';
 import '../models/activity_model.dart';
 import '../providers/app_providers.dart';
 import '../utils/formatters.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'route_map_widget.dart';
+import 'route_outline_painter.dart';
+
+enum ShareCardBackgroundMode { map, photo }
 
 /// A self-contained styled card designed to be captured as a share image.
 /// Wrap this in a [RepaintBoundary] with a [GlobalKey] to capture it.
-///
-/// Contains: app branding, route map, date, distance, duration, pace.
 class ShareableCardWidget extends ConsumerWidget {
   final ActivityModel activity;
+  final ShareCardBackgroundMode backgroundMode;
 
-  const ShareableCardWidget({super.key, required this.activity});
+  const ShareableCardWidget({
+    super.key,
+    required this.activity,
+    this.backgroundMode = ShareCardBackgroundMode.map,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final useMetric = ref.watch(appSettingsProvider).useMetric;
-    final isDark = CupertinoTheme.brightnessOf(context) == Brightness.dark;
+    if (backgroundMode == ShareCardBackgroundMode.photo) {
+      return _buildStyledPhotoPreview(useMetric);
+    }
+
+    return _buildMapCardPreview(context, useMetric);
+  }
+
+  Widget _buildStyledPhotoPreview(bool useMetric) {
+    return SizedBox(
+      width: 360,
+      child: AspectRatio(
+        aspectRatio: 9 / 16,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            _buildPhotoBackground(),
+            const DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.center,
+                  colors: [Color(0xCC000000), Color(0x00000000)],
+                ),
+              ),
+            ),
+            const DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.bottomCenter,
+                  end: Alignment.center,
+                  colors: [Color(0xDD000000), Color(0x00000000)],
+                ),
+              ),
+            ),
+            Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _OverlayStat(
+                    'Distance',
+                    formatDistance(activity.distance, useMetric: useMetric),
+                  ),
+                  const SizedBox(height: 16),
+                  _OverlayStat(
+                    'Pace',
+                    formatPace(activity.pace, useMetric: useMetric),
+                  ),
+                  const SizedBox(height: 16),
+                  _OverlayStat('Time', formatDuration(activity.durationSeconds)),
+                  const SizedBox(height: 24),
+                  if (activity.routeCoordinates.length >= 2)
+                    RouteOutlineWidget(
+                      coordinates: activity.routeCoordinates,
+                      size: 120,
+                    ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'STRIVO',
+                    style: TextStyle(
+                      color: Color(0xFF2424EA),
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 4,
+                      shadows: [
+                        Shadow(blurRadius: 6, color: CupertinoColors.black),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMapCardPreview(BuildContext context, bool useMetric) {
+    final cardBg = CupertinoColors.systemBackground.resolveFrom(context);
     return Container(
       width: 360,
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white,
+        color: cardBg,
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
@@ -36,20 +121,16 @@ class ShareableCardWidget extends ConsumerWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // ── Route Map ────────────────────────────────────────────
           RouteMapWidget(
             coordinates: activity.routeCoordinates,
             interactive: false,
             height: 200,
           ),
-
-          // ── Stats ─────────────────────────────────────────────────
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Date
                 Text(
                   formatDate(activity.date),
                   style: const TextStyle(
@@ -58,8 +139,6 @@ class ShareableCardWidget extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(height: 12),
-
-                // Distance — hero stat
                 Text(
                   formatDistance(activity.distance, useMetric: useMetric),
                   style: const TextStyle(
@@ -68,10 +147,7 @@ class ShareableCardWidget extends ConsumerWidget {
                     letterSpacing: -1,
                   ),
                 ),
-
                 const SizedBox(height: 10),
-
-                // Duration + Pace row
                 Row(
                   children: [
                     _StatPill(
@@ -85,19 +161,16 @@ class ShareableCardWidget extends ConsumerWidget {
                     ),
                   ],
                 ),
-
                 const SizedBox(height: 16),
-
-                // Branding footer
-                Row(
+                const Row(
                   children: [
-                    const Icon(
+                    Icon(
                       CupertinoIcons.flame_fill,
                       color: CupertinoColors.systemOrange,
                       size: 16,
                     ),
-                    const SizedBox(width: 4),
-                    const Text(
+                    SizedBox(width: 4),
+                    Text(
                       'RunTracker',
                       style: TextStyle(
                         fontSize: 13,
@@ -114,9 +187,57 @@ class ShareableCardWidget extends ConsumerWidget {
       ),
     );
   }
+
+  Widget _buildPhotoBackground() {
+    final path = activity.photoPath;
+    if (path != null && File(path).existsSync()) {
+      return Image.file(File(path), fit: BoxFit.cover);
+    }
+
+    return RouteMapWidget(
+      coordinates: activity.routeCoordinates,
+      interactive: false,
+      height: 640,
+    );
+  }
 }
 
-// ── Helper ────────────────────────────────────────────────────────────────────
+class _OverlayStat extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _OverlayStat(this.label, this.value);
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: <Widget>[
+        Text(
+          label,
+          style: const TextStyle(
+            color: CupertinoColors.white,
+            fontSize: 14,
+            fontWeight: FontWeight.w400,
+            shadows: <Shadow>[
+              Shadow(blurRadius: 6, color: CupertinoColors.black),
+            ],
+          ),
+        ),
+        Text(
+          value,
+          style: const TextStyle(
+            color: CupertinoColors.white,
+            fontSize: 48,
+            fontWeight: FontWeight.w800,
+            shadows: <Shadow>[
+              Shadow(blurRadius: 8, color: CupertinoColors.black),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
 
 class _StatPill extends StatelessWidget {
   final IconData icon;
@@ -126,11 +247,10 @@ class _StatPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = CupertinoTheme.brightnessOf(context) == Brightness.dark;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF2C2C2E) : const Color(0xFFF2F2F7),
+        color: CupertinoColors.tertiarySystemFill.resolveFrom(context),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(

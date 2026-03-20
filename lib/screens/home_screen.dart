@@ -28,6 +28,7 @@ class HomeScreen extends ConsumerWidget {
     activityState.activities.where((a) => a.postedToFeed).toList();
     final username = settings.username.isEmpty ? 'Runner' : settings.username;
     final useMetric = settings.useMetric;
+    final navBg = CupertinoColors.systemBackground.resolveFrom(context);
 
     Future<void> refreshFeed() async {
       await ref.read(activityProvider.notifier).loadActivities();
@@ -42,7 +43,7 @@ class HomeScreen extends ConsumerWidget {
             largeTitle: const Text('Activity Feed', style: TextStyle(letterSpacing: -0.5)),
             alwaysShowMiddle: false,
             border: null,
-            backgroundColor: CupertinoColors.systemGroupedBackground.withOpacity(0.8),
+            backgroundColor: navBg.withValues(alpha: 0.9),
           ),
           CupertinoSliverRefreshControl(onRefresh: refreshFeed),
 
@@ -64,24 +65,30 @@ class HomeScreen extends ConsumerWidget {
             if (feedActivities.isEmpty)
               SliverFillRemaining(
                 hasScrollBody: false,
-                child: _buildEmptyState(onGoToRecord: onGoToRecord),
+                child: _buildEmptyState(
+                  context,
+                  onGoToRecord: onGoToRecord,
+                ),
               )
             else
-              SliverList(
-                delegate: SliverChildBuilderDelegate(
-                      (context, index) => _FeedPostCard(
-                    activity: feedActivities[index],
-                    username: username,
-                    useMetric: useMetric,
-                    onTap: () => Navigator.push(
-                      context,
-                      CupertinoPageRoute(
-                        builder: (_) => ActivitySummaryScreen(
-                            activity: feedActivities[index]),
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(0, 6, 0, 12),
+                sliver: SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                        (context, index) => _FeedPostCard(
+                      activity: feedActivities[index],
+                      username: username,
+                      useMetric: useMetric,
+                      onTap: () => Navigator.push(
+                        context,
+                        CupertinoPageRoute(
+                          builder: (_) => ActivitySummaryScreen(
+                              activity: feedActivities[index]),
+                        ),
                       ),
                     ),
+                    childCount: feedActivities.length,
                   ),
-                  childCount: feedActivities.length,
                 ),
               ),
             const SliverToBoxAdapter(child: SizedBox(height: 100)),
@@ -91,7 +98,13 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildEmptyState({required VoidCallback? onGoToRecord}) {
+  Widget _buildEmptyState(
+    BuildContext context, {
+    required VoidCallback? onGoToRecord,
+  }) {
+    final titleColor = CupertinoColors.label.resolveFrom(context);
+    final descriptionColor = CupertinoColors.secondaryLabel.resolveFrom(context);
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(40),
@@ -101,7 +114,7 @@ class HomeScreen extends ConsumerWidget {
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: stravaOrange.withOpacity(0.1),
+                color: stravaOrange.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
               child: const Icon(
@@ -111,15 +124,23 @@ class HomeScreen extends ConsumerWidget {
               ),
             ),
             const SizedBox(height: 24),
-            const Text(
+            Text(
               'Your feed is empty',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.w800,
+                color: titleColor,
+              ),
             ),
             const SizedBox(height: 12),
-            const Text(
+            Text(
               'When you finish a run, choose to post it here and add a caption.',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 16, color: CupertinoColors.secondaryLabel, height: 1.3),
+              style: TextStyle(
+                fontSize: 16,
+                color: descriptionColor,
+                height: 1.3,
+              ),
             ),
             const SizedBox(height: 32),
             CupertinoButton(
@@ -130,9 +151,20 @@ class HomeScreen extends ConsumerWidget {
               child: const Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(CupertinoIcons.play_circle_fill, size: 20),
+                  Icon(
+                    CupertinoIcons.play_circle_fill,
+                    size: 20,
+                    color: CupertinoColors.white,
+                  ),
                   SizedBox(width: 8),
-                  Text('Record a Run', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+                  Text(
+                    'Record a Run',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 17,
+                      color: CupertinoColors.white,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -161,18 +193,22 @@ class _FeedPostCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = CupertinoTheme.brightnessOf(context) == Brightness.dark;
-    final cardColor = isDark ? const Color(0xFF1C1C1E) : CupertinoColors.white;
+    final subtleTextColor =
+        CupertinoColors.label.resolveFrom(context).withValues(alpha: 0.72);
+    final cardColor = CupertinoColors.secondarySystemGroupedBackground
+        .resolveFrom(context);
 
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         decoration: BoxDecoration(
           color: cardColor,
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(
-              color: isDark ? const Color(0x66000000) : const Color(0x0A000000),
+                color: CupertinoColors.black
+                    .withValues(alpha: isDark ? 0.32 : 0.07),
               blurRadius: 20,
               offset: const Offset(0, 10),
             ),
@@ -199,7 +235,7 @@ class _FeedPostCard extends StatelessWidget {
                         ),
                         Text(
                           formatDate(activity.date),
-                          style: const TextStyle(fontSize: 12, color: CupertinoColors.secondaryLabel),
+                          style: TextStyle(fontSize: 12, color: subtleTextColor),
                         ),
                       ],
                     ),
@@ -207,7 +243,7 @@ class _FeedPostCard extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     decoration: BoxDecoration(
-                      color: stravaOrange.withOpacity(0.1),
+                      color: stravaOrange.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: const Text(
@@ -353,8 +389,10 @@ class _FeedPostCard extends StatelessWidget {
                       style: const TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w500,
-                        color: Color(0xFFAAAAAA),
+                        color: CupertinoColors.white,
                         shadows: [Shadow(blurRadius: 2, color: CupertinoColors.black)],
+                      ).copyWith(
+                        color: CupertinoColors.white.withValues(alpha: 0.88),
                       ),
                     ),
                   ],

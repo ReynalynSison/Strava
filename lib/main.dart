@@ -34,7 +34,8 @@ class MyApp extends ConsumerWidget {
     return CupertinoApp(
       theme: CupertinoThemeData(
         brightness: settings.darkMode ? Brightness.dark : Brightness.light,
-        scaffoldBackgroundColor: ultraLightBlue,
+        scaffoldBackgroundColor:
+            settings.darkMode ? const Color(0xFF0F1115) : ultraLightBlue,
         primaryColor: primaryBlue,
       ),
       debugShowCheckedModeBanner: false,
@@ -60,8 +61,13 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = CupertinoTheme.brightnessOf(context) == Brightness.dark;
+    final scaffoldBg = isDark
+        ? CupertinoColors.systemGroupedBackground.resolveFrom(context)
+        : ultraLightBlue;
+
     return CupertinoPageScaffold(
-      backgroundColor: ultraLightBlue,
+      backgroundColor: scaffoldBg,
       child: SingleChildScrollView(
         child: Column(
           children: [
@@ -81,7 +87,7 @@ class _LoginPageState extends State<LoginPage> {
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: primaryBlue.withOpacity(0.3),
+                    color: primaryBlue.withValues(alpha: 0.3),
                     blurRadius: 20,
                     offset: const Offset(0, 10),
                   ),
@@ -102,7 +108,7 @@ class _LoginPageState extends State<LoginPage> {
                           shape: BoxShape.circle,
                           boxShadow: [
                             BoxShadow(
-                              color: skyBlue.withOpacity(0.4),
+                              color: skyBlue.withValues(alpha: 0.4),
                               blurRadius: 40,
                               spreadRadius: 5,
                             ),
@@ -113,9 +119,9 @@ class _LoginPageState extends State<LoginPage> {
                         height: 90,
                         width: 90,
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.15),
+                          color: Colors.white.withValues(alpha: 0.15),
                           shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white.withOpacity(0.2), width: 1.5),
+                          border: Border.all(color: Colors.white.withValues(alpha: 0.2), width: 1.5),
                         ),
                         child: const Center(
                           child: Icon(CupertinoIcons.bolt_fill, size: 45, color: Colors.white),
@@ -155,18 +161,20 @@ class _LoginPageState extends State<LoginPage> {
                     controller: _username,
                     label: "USERNAME",
                     icon: CupertinoIcons.person_solid,
+                    isDark: isDark,
                   ),
                   const SizedBox(height: 20),
                   _buildAestheticInput(
                     controller: _password,
                     label: "PASSWORD",
                     icon: CupertinoIcons.lock_shield_fill,
+                    isDark: isDark,
                     obscure: hidePassword,
                     suffix: CupertinoButton(
                       padding: EdgeInsets.zero,
                       child: Icon(
                         hidePassword ? CupertinoIcons.eye : CupertinoIcons.eye_slash,
-                        color: primaryBlue.withOpacity(0.4),
+                        color: primaryBlue.withValues(alpha: 0.4),
                       ),
                       onPressed: () => setState(() => hidePassword = !hidePassword),
                     ),
@@ -192,7 +200,7 @@ class _LoginPageState extends State<LoginPage> {
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: primaryBlue.withOpacity(0.3),
+                            color: primaryBlue.withValues(alpha: 0.3),
                             blurRadius: 15,
                             offset: const Offset(0, 8),
                           ),
@@ -224,9 +232,9 @@ class _LoginPageState extends State<LoginPage> {
                         onPressed: _handleBiometricAuth,
                         child: Column(
                           children: [
-                            Icon(CupertinoIcons.lock_shield_fill, size: 40, color: primaryBlue.withOpacity(0.6)),
+                            Icon(CupertinoIcons.lock_shield_fill, size: 40, color: primaryBlue.withValues(alpha: 0.6)),
                             const SizedBox(height: 5),
-                            Text("Use Biometrics", style: TextStyle(color: primaryBlue.withOpacity(0.6), fontSize: 12, fontWeight: FontWeight.w600)),
+                            Text("Use Biometrics", style: TextStyle(color: primaryBlue.withValues(alpha: 0.6), fontSize: 12, fontWeight: FontWeight.w600)),
                           ],
                         ),
                       ),
@@ -239,7 +247,11 @@ class _LoginPageState extends State<LoginPage> {
                     padding: EdgeInsets.zero,
                     child: Text(
                       "Reset all data",
-                      style: TextStyle(color: deepNavy.withOpacity(0.4), fontSize: 13, decoration: TextDecoration.underline),
+                      style: TextStyle(
+                        color: CupertinoColors.secondaryLabel.resolveFrom(context),
+                        fontSize: 13,
+                        decoration: TextDecoration.underline,
+                      ),
                     ),
                     onPressed: () => _handleResetData(context),
                   ),
@@ -257,6 +269,7 @@ class _LoginPageState extends State<LoginPage> {
     required TextEditingController controller,
     required String label,
     required IconData icon,
+    required bool isDark,
     bool obscure = false,
     Widget? suffix,
   }) {
@@ -267,16 +280,26 @@ class _LoginPageState extends State<LoginPage> {
           padding: const EdgeInsets.only(left: 10, bottom: 8),
           child: Text(
             label,
-            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Color(0x66001D39), letterSpacing: 1.5),
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              color: isDark
+                  ? CupertinoColors.tertiaryLabel.resolveFrom(context)
+                  : const Color(0x66001D39),
+              letterSpacing: 1.5,
+            ),
           ),
         ),
         Container(
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: isDark
+                ? CupertinoColors.secondarySystemBackground.resolveFrom(context)
+                : CupertinoColors.white,
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
-                color: deepNavy.withOpacity(0.04),
+                color: (isDark ? CupertinoColors.black : deepNavy)
+                    .withValues(alpha: isDark ? 0.3 : 0.04),
                 blurRadius: 20,
                 offset: const Offset(0, 10),
               ),
@@ -285,15 +308,34 @@ class _LoginPageState extends State<LoginPage> {
           child: CupertinoTextField(
             controller: controller,
             placeholder: "Enter your ${label.toLowerCase()}",
-            placeholderStyle: TextStyle(color: deepNavy.withOpacity(0.2), fontSize: 14),
-            obscureText: obscure,
-            padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 20),
-            decoration: null,
-            prefix: Padding(
-              padding: const EdgeInsets.only(left: 20),
-              child: Icon(icon, color: primaryBlue, size: 18),
+            style: TextStyle(
+              fontSize: 16,
+              height: 1.0,
+              color: CupertinoColors.label.resolveFrom(context),
             ),
-            suffix: suffix,
+            placeholderStyle: TextStyle(
+              color: CupertinoColors.secondaryLabel
+                  .resolveFrom(context)
+                  .withValues(alpha: 0.75),
+              fontSize: 16,
+              height: 1.0,
+            ),
+            obscureText: obscure,
+            // Keep icon and text on the same visual baseline across auth fields.
+            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+            decoration: null,
+            prefix: SizedBox(
+              width: 52,
+              child: Center(
+                child: Icon(icon, color: isDark ? skyBlue : primaryBlue, size: 18),
+              ),
+            ),
+            suffix: suffix == null
+                ? null
+                : SizedBox(
+                    width: 52,
+                    child: Center(child: suffix),
+                  ),
           ),
         ),
       ],

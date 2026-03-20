@@ -121,7 +121,7 @@ class HistoryScreen extends ConsumerWidget {
           // --- Premium Sliver Navbar (Consistent with YouScreen) ---
           CupertinoSliverNavigationBar(
             largeTitle: const Text('History', style: TextStyle(letterSpacing: -0.5)),
-            backgroundColor: (isDark ? CupertinoColors.black : iosBg).withOpacity(0.8),
+            backgroundColor: (isDark ? CupertinoColors.black : iosBg).withValues(alpha: 0.8),
             border: null,
             trailing: isSeeding
                 ? const CupertinoActivityIndicator()
@@ -143,7 +143,7 @@ class HistoryScreen extends ConsumerWidget {
           else if (activities.isEmpty)
             SliverFillRemaining(
               hasScrollBody: false,
-              child: _buildEmptyState(isDark),
+              child: _buildEmptyState(context, isDark),
             )
           else
             _buildList(context, ref, activities, isDark),
@@ -156,7 +156,10 @@ class HistoryScreen extends ConsumerWidget {
 
   // ─── Empty State ──────────────────────────────────────────────────────────
 
-  Widget _buildEmptyState(bool isDark) {
+  Widget _buildEmptyState(BuildContext context, bool isDark) {
+    final titleColor = CupertinoColors.label.resolveFrom(context);
+    final descriptionColor = CupertinoColors.secondaryLabel.resolveFrom(context);
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 40),
@@ -166,22 +169,22 @@ class HistoryScreen extends ConsumerWidget {
             Container(
               padding: const EdgeInsets.all(28),
               decoration: BoxDecoration(
-                color: themeBlue.withOpacity(0.1),
+                color: themeBlue.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
               child: Icon(
                 CupertinoIcons.graph_square_fill,
                 size: 60,
-                color: themeBlue.withOpacity(0.5),
+                color: themeBlue.withValues(alpha: 0.5),
               ),
             ),
             const SizedBox(height: 24),
             Text(
               'No activities yet',
               style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                  color: isDark ? CupertinoColors.white : deepNavy
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                color: titleColor,
               ),
             ),
             const SizedBox(height: 10),
@@ -189,9 +192,9 @@ class HistoryScreen extends ConsumerWidget {
               'Your fitness journey starts here. Record a run and see your history grow.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                  fontSize: 15,
-                  color: CupertinoColors.secondaryLabel,
-                  height: 1.4
+                fontSize: 15,
+                color: descriptionColor,
+                height: 1.4,
               ),
             ),
             const SizedBox(height: 32),
@@ -200,7 +203,13 @@ class HistoryScreen extends ConsumerWidget {
               borderRadius: BorderRadius.circular(16),
               padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
               onPressed: onGoToRecord,
-              child: const Text('Start First Activity', style: TextStyle(fontWeight: FontWeight.w700)),
+              child: const Text(
+                'Start First Activity',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: CupertinoColors.white,
+                ),
+              ),
             ),
           ],
         ),
