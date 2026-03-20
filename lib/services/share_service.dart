@@ -7,6 +7,20 @@ import 'package:flutter/widgets.dart';
 
 /// Handles capturing a widget as a PNG and sharing it via the system share sheet.
 class ShareService {
+  Rect _shareOriginFromKey(GlobalKey key) {
+    final context = key.currentContext;
+    final renderObject = context?.findRenderObject();
+    if (renderObject is RenderBox && renderObject.hasSize) {
+      final origin = renderObject.localToGlobal(Offset.zero);
+      final width = renderObject.size.width <= 0 ? 1.0 : renderObject.size.width;
+      final height =
+          renderObject.size.height <= 0 ? 1.0 : renderObject.size.height;
+      return Rect.fromLTWH(origin.dx, origin.dy, width, height);
+    }
+    // iOS requires a non-zero popover origin; use a tiny fallback rect.
+    return const Rect.fromLTWH(1, 1, 1, 1);
+  }
+
   /// Captures the widget bound to [key] as a PNG and opens the iOS share sheet.
   /// The [key] must be attached to a [RepaintBoundary].
   Future<void> shareActivityImage(GlobalKey key, {String? text}) async {
@@ -32,6 +46,7 @@ class ShareService {
       await Share.shareXFiles(
         [XFile(file.path, mimeType: 'image/png')],
         text: text ?? 'Check out my run! 🏃',
+        sharePositionOrigin: _shareOriginFromKey(key),
       );
     } catch (e) {
       rethrow;
@@ -76,6 +91,7 @@ class ShareService {
       await Share.shareXFiles(
         [XFile(file.path, mimeType: 'image/png')],
         text: text ?? 'Check out my run! 🏃',
+        sharePositionOrigin: _shareOriginFromKey(key),
       );
     } catch (e) {
       rethrow;
