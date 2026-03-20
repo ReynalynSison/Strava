@@ -102,7 +102,10 @@ class ShareableCardWidget extends ConsumerWidget {
   }
 
   Widget _buildMapCardPreview(BuildContext context, bool useMetric) {
+    final isDark = CupertinoTheme.brightnessOf(context) == Brightness.dark;
     final cardBg = CupertinoColors.systemBackground.resolveFrom(context);
+    final dateColor = CupertinoColors.secondaryLabel.resolveFrom(context);
+    final primaryText = CupertinoColors.label.resolveFrom(context);
     return Container(
       width: 360,
       decoration: BoxDecoration(
@@ -110,7 +113,7 @@ class ShareableCardWidget extends ConsumerWidget {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: CupertinoColors.black.withValues(alpha: 0.12),
+            color: CupertinoColors.black.withValues(alpha: isDark ? 0.3 : 0.12),
             blurRadius: 24,
             offset: const Offset(0, 8),
           ),
@@ -133,18 +136,19 @@ class ShareableCardWidget extends ConsumerWidget {
               children: [
                 Text(
                   formatDate(activity.date),
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 13,
-                    color: CupertinoColors.secondaryLabel,
+                    color: dateColor,
                   ),
                 ),
                 const SizedBox(height: 12),
                 Text(
                   formatDistance(activity.distance, useMetric: useMetric),
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 40,
                     fontWeight: FontWeight.w800,
                     letterSpacing: -1,
+                    color: primaryText,
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -247,6 +251,8 @@ class _StatPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final valueColor = CupertinoColors.label.resolveFrom(context);
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
@@ -260,9 +266,10 @@ class _StatPill extends StatelessWidget {
           const SizedBox(width: 5),
           Text(
             value,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
+              color: valueColor,
             ),
           ),
         ],

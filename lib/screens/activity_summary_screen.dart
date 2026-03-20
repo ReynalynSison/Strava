@@ -70,12 +70,16 @@ class _ActivitySummaryScreenState extends ConsumerState<ActivitySummaryScreen> {
     final isSharing = ref.watch(_summarySharingProvider(widget.activity.id));
     final isDark = CupertinoTheme.brightnessOf(context) == Brightness.dark;
     final navBg = CupertinoColors.systemBackground.resolveFrom(context);
+    final pageBg = CupertinoColors.systemGroupedBackground.resolveFrom(context);
+    final segmentedBg = CupertinoColors.tertiarySystemFill.resolveFrom(context);
+    final segmentedThumb = CupertinoColors.systemBackground.resolveFrom(context);
+    final segmentedTextColor = CupertinoColors.label.resolveFrom(context);
     final hasShareablePhoto =
         widget.activity.photoPath != null &&
             File(widget.activity.photoPath!).existsSync();
 
     return CupertinoPageScaffold(
-      backgroundColor: CupertinoColors.systemGroupedBackground,
+      backgroundColor: pageBg,
       navigationBar: CupertinoNavigationBar(
         backgroundColor: navBg.withValues(alpha: 0.9),
         border: null,
@@ -181,16 +185,26 @@ class _ActivitySummaryScreenState extends ConsumerState<ActivitySummaryScreen> {
                   padding: const EdgeInsets.only(bottom: 12),
                   child: CupertinoSlidingSegmentedControl<ShareCardBackgroundMode>(
                     groupValue: _shareBackgroundMode,
-                    children: const {
+                    backgroundColor: segmentedBg,
+                    thumbColor: segmentedThumb,
+                    children: {
                       ShareCardBackgroundMode.map: Padding(
                         padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        child: Text('Map'),
+                        child: Text(
+                          'Map',
+                          style: TextStyle(color: segmentedTextColor),
+                        ),
                       ),
                       ShareCardBackgroundMode.photo: Padding(
                         padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        child: Text('Photo (Styled)'),
+                        child: Text(
+                          'Photo (Styled)',
+                          style: TextStyle(color: segmentedTextColor),
+                        ),
                       ),
                     },
+                    // Keep segmented labels readable in both themes.
+                    proportionalWidth: true,
                     onValueChanged: (value) {
                       if (value == null) return;
                       setState(() => _shareBackgroundMode = value);
@@ -227,19 +241,25 @@ class _ActivitySummaryScreenState extends ConsumerState<ActivitySummaryScreen> {
               // ── Share Button ──
               CupertinoButton(
                 color: themeBlue,
+                disabledColor: themeBlue.withValues(alpha: 0.45),
                 borderRadius: BorderRadius.circular(18),
                 padding: const EdgeInsets.symmetric(vertical: 18),
                 onPressed: isSharing ? null : _share,
                 child: isSharing
                     ? const CupertinoActivityIndicator(color: CupertinoColors.white)
-                    : const Row(
+                    : Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(CupertinoIcons.share_up, color: CupertinoColors.white, size: 22),
-                    SizedBox(width: 12),
+                    const Icon(CupertinoIcons.share_up, color: CupertinoColors.white, size: 22),
+                    const SizedBox(width: 12),
                     Text(
                       'Share to Socials',
-                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, letterSpacing: 0.3),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 17,
+                        letterSpacing: 0.3,
+                        color: CupertinoColors.white,
+                      ),
                     ),
                   ],
                 ),
